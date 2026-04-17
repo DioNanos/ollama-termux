@@ -1,0 +1,63 @@
+name: npm-publish
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to publish from, for example v0.21.0-termux.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${{ inputs.release_tag }}"
+          fi
+          case "$TAG" in
+            v*) ;;
+            *) echo "Release tag must start with v"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Validate version and release assets
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="v${VERSION}"
+          test "${{ steps.meta.outputs.tag }}" = "$TAG"
+          BASE_URL="https://github.com/DioNanos/ollama-termux/releases/download/${TAG}"
+          curl -fI -L "${BASE_URL}/ollama-termux-${VERSION}-android-arm64.tar.gz"
+          curl -fI -L "${BASE_URL}/ollama-termux-${VERSION}-android-arm64.tar.gz.sha256"
+
+      - name: Dry-run package
+        run: npm pack --dry-run
+
+      - name: Publish package
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

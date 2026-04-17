@@ -17,7 +17,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VERSION="${VERSION:-0.1.0}"
+if [ -z "${VERSION:-}" ]; then
+    if command -v node >/dev/null 2>&1; then
+        VERSION="$(node -p "require('$ROOT_DIR/package.json').version")"
+    else
+        VERSION="$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT_DIR/package.json" | head -1)"
+    fi
+fi
 BUILD_DIR="$ROOT_DIR/build/termux"
 DIST_DIR="$ROOT_DIR/dist/termux"
 
@@ -38,6 +44,9 @@ fi
 echo "=== ollama-termux build (version $VERSION) ==="
 echo "NDK: $NDK_ROOT"
 echo ""
+
+rm -rf "$DIST_DIR"
+mkdir -p "$DIST_DIR"
 
 # --- Step 1: Build ggml .so backends ---
 
@@ -70,11 +79,15 @@ for variant in "${GGML_VARIANTS[@]}"; do
     lib_dir="$variant_dir/lib/ollama"
     if [ -d "$lib_dir" ]; then
         mkdir -p "$DIST_DIR/lib/ollama"
-        # Map variant name to ggml backend naming convention
-        for so in "$lib_dir"/libggml-cpu-*.so; do
+        # Rename each .so with the variant name so the 3 builds don't overwrite each other.
+        # Output: libggml-cpu-android_armv8_0_1.so / *_armv8_2_1.so / *_armv8_6_1.so
+        suffix="android_${name//./_}_1"
+        for so in "$lib_dir"/libggml-cpu*.so; do
             if [ -f "$so" ]; then
-                cp "$so" "$DIST_DIR/lib/ollama/"
-                echo "  Copied: $(basename "$so")"
+                base="$(basename "$so" .so)"
+                dest="$DIST_DIR/lib/ollama/${base}-${suffix}.so"
+                cp "$so" "$dest"
+                echo "  Copied: $(basename "$dest")"
             fi
         done
     else
@@ -112,6 +125,7 @@ TARBALL_NAME="ollama-termux-$VERSION-android-arm64.tar.gz"
 TARBALL_PATH="$ROOT_DIR/dist/$TARBALL_NAME"
 
 mkdir -p "$(dirname "$TARBALL_PATH")"
+rm -f "$TARBALL_PATH" "$TARBALL_PATH.sha256"
 
 # Create temp staging dir with clean structure
 STAGING=$(mktemp -d)

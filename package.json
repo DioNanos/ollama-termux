@@ -1,7 +1,7 @@
 {
   "name": "@mmmbuto/ollama-termux",
-  "version": "0.1.0",
-  "description": "Ollama fork optimized for Termux/Android ARM64 smartphones with ARMv8.2+ CPU optimizations",
+  "version": "0.21.0-termux.1",
+  "description": "Upstream Ollama published as a Termux-first Android ARM64 fork with prebuilt release assets and mobile-oriented runtime tuning.",
   "keywords": ["ollama", "termux", "android", "arm64", "cli", "ai", "inference", "llm"],
   "homepage": "https://github.com/DioNanos/ollama-termux#readme",
   "bugs": {
@@ -17,14 +17,22 @@
     "node": ">=18"
   },
   "os": [
-    "android",
-    "linux"
+    "android"
   ],
   "cpu": [
     "arm64"
   ],
+  "main": "install.js",
+  "files": [
+    "install.js",
+    "README.md",
+    "docs/BUILDING.md"
+  ],
   "bin": {
     "ollama-termux": "./install.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "postinstall": "node install.js"

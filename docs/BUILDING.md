@@ -2,124 +2,99 @@
 
 ## Overview
 
-There are two ways to install:
+`ollama-termux` is published through two linked artifacts for the same version:
 
-1. **Pre-built (recommended)** — Download release tarball via `npm install -g @mmmbuto/ollama-termux`
-2. **Cross-compile from MGM** — Build Go binary + ggml `.so` on a Linux desktop, deploy to phone
+- GitHub Release assets:
+  - `ollama-termux-<version>-android-arm64.tar.gz`
+  - `ollama-termux-<version>-android-arm64.tar.gz.sha256`
+- npm package:
+  - `@mmmbuto/ollama-termux`
 
-## 1. Pre-built Install (Termux)
+The npm installer is only valid when the matching GitHub Release assets already
+exist.
 
-```bash
-npm install -g @mmmbuto/ollama-termux
-```
+## Versioning
 
-This downloads a tarball with the Go binary and all ggml backends. No toolchain needed.
+The fork tracks upstream Ollama versions and appends a Termux release suffix:
 
-## 2. Cross-Compile from MGM (Full Build)
+- upstream base: `0.21.0`
+- fork release: `0.21.0-termux.1`
+- git tag: `v0.21.0-termux.1`
 
-Use `scripts/build_termux.sh` for the canonical build:
+`package.json` is the source of truth for the fork version. The build script and
+release workflow read from it.
+
+## Local Cross-Build
+
+Canonical local build command:
 
 ```bash
 export NDK_ROOT=~/android-ndk/android-ndk-r27c
 ./scripts/build_termux.sh
 ```
 
-Output: `dist/ollama-termux-<version>-android-arm64.tar.gz`
+Outputs:
 
-### Prerequisites on MGM
+- `dist/ollama-termux-<version>-android-arm64.tar.gz`
+- `dist/ollama-termux-<version>-android-arm64.tar.gz.sha256`
+
+## Prerequisites
+
+On the Linux build host:
+
+- Android NDK `r27c`
+- Go `>= 1.24`
+- Node.js (used to read package version)
+- CMake `>= 3.22`
+- Ninja
+- `file`, `curl`, `unzip`
+
+Example NDK setup:
 
 ```bash
-# Android NDK r27c (LLVM 18, supports ARMv8.2+ targets)
 mkdir -p ~/android-ndk
 cd ~/android-ndk
 wget https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
 unzip android-ndk-r27c-linux.zip
 export NDK_ROOT=~/android-ndk/android-ndk-r27c
-
-# Go >= 1.24, CMake >= 3.22, Ninja
 ```
 
-### CMake Cross-Compilation Patches
+## Build Artifacts
 
-The following patches are needed for cross-compilation with NDK:
+The tarball contains:
 
-**mem_hip.cpp** - Add glob.h include:
-```diff
-+#include <glob.h>
-```
+- `bin/ollama`
+- `lib/ollama/libggml-cpu-android_armv8_0_1.so`
+- `lib/ollama/libggml-cpu-android_armv8_2_1.so`
+- `lib/ollama/libggml-cpu-android_armv8_6_1.so`
 
-**CMakeLists.txt** - Wrap install() in CMAKE_CROSSCOMPILING check:
-```cmake
-if(NOT CMAKE_CROSSCOMPILING)
-install(TARGETS ggml-base ${CPU_VARIANTS}
-    ...
-)
-endif()
-```
+The installer downloads that tarball and extracts it into the Termux prefix.
 
-### Deploy to Phone
+## Release Workflow
+
+1. Update `package.json` version to the next `x.y.z-termux.N`
+2. Push the corresponding tag `v<version>`
+3. GitHub Actions runs `.github/workflows/release.yaml`
+4. The workflow builds the Android tarball and checksum
+5. The workflow publishes the GitHub Release and uploads both assets
+6. `.github/workflows/npm-publish.yaml` verifies those assets exist
+7. npm publish can proceed safely
+
+## Manual Device Install
 
 ```bash
-# Via SSH (sshd running on Termux, port 8022)
+# Copy tarball to the phone
 scp dist/ollama-termux-*-android-arm64.tar.gz pixel9:~/
 
-# On Termux:
+# On Termux
 cd /data/data/com.termux/files/usr
 tar -xzf ~/ollama-termux-*-android-arm64.tar.gz
 chmod +x bin/ollama
 ```
 
-### Verify Backend Selection
+## Runtime Notes
 
-```bash
-# On Termux, check which backend is loaded
-ollama serve --verbose 2>&1 | grep -i "ggml\|cpu\|backend"
-```
-
-The ARM feature detection (HWCAP) in ggml automatically selects the best `.so` variant.
-
-## 3. Manual ggml Build (One Variant)
-
-If you only need one variant:
-
-```bash
-mkdir -p build/termux && cd build/termux
-cmake ../.. \
-  -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
-  -DANDROID_ABI=arm64-v8a \
-  -DANDROID_PLATFORM=android-28 \
-  -DANDROID_ARM_NEON=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
-  -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
-  -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
-  -DGGML_VULKAN=OFF \
-  -DGGML_CUDA=OFF \
-  -GNinja
-ninja ggml-cpu
-```
-
-## 4. Dependencies Checklist
-
-### On Termux
-- [x] `nodejs-lts` >= 18
-- [x] `@anthropic-ai/claude-code` (npm)
-- [x] `@mmmbuto/codex-cli-termux` (npm)
-- [x] `golang` >= 1.24 (only for manual on-device build)
-
-### On MGM
-- [x] Android NDK r27c+
-- [x] Go >= 1.24
-- [x] CMake >= 3.22
-- [x] Ninja
-- [ ] ~10 GB free disk space
-
-## 5. Build Targets
-
-| Target | Architecture | Flags | Device |
-|--------|-------------|-------|--------|
-| armv8.0 | ARMv8.0-A | baseline | Old phones (fallback) |
-| armv8.2 | ARMv8.2-A +dotprod +fp16 | `-march=armv8.2-a+dotprod+fp16` | Pixel 9 Pro, Galaxy S24+, Galaxy S25 |
-| armv8.6 | ARMv8.6-A +dotprod +fp16 +i8mm +sve2 | `-march=armv8.6-a+dotprod+fp16+i8mm+sve2` | Pixel 9 Pro (Cortex-X4), Galaxy S25 Ultra (Oryon) |
-
-Note: `i8mm` is an ARMv8.6-A feature. The armv8.2 build deliberately omits it for broader compatibility. The armv8.6 build targets newer cores (Cortex-X4, Oryon) that support the full feature set including SVE2.
+- Thread selection uses big-core detection via `cpufreq` when available
+- Free memory is derived from an Android-specific `MemTotal` heuristic
+- Flash attention is enabled automatically for the tuned mobile path
+- The highest CPU backend is chosen at runtime by ggml feature detection

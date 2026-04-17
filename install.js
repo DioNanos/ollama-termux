@@ -130,7 +130,7 @@ async function main() {
   } catch (e) {
     log(`Download failed: ${e.message}`);
     log('');
-    log('The pre-built binary may not be available for this version.');
+    log('The matching GitHub Release asset may not exist for this version yet.');
     log('Build manually with:');
     log('  pkg install golang');
     log('  git clone https://github.com/DioNanos/ollama-termux.git');
@@ -178,8 +178,9 @@ async function main() {
   log('');
   log('Quick start:');
   log('  ollama serve &');
-  log('  ollama pull qwen3.5');
-  log('  ollama launch claude --model qwen3.5');
+  log('  ollama pull qwen2.5:3b');
+  log('  ollama launch claude --model qwen2.5:3b');
+  log('  ollama launch codex --model qwen2.5:3b');
 }
 
 main().catch((e) => {

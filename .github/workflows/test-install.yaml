@@ -1,22 +1,31 @@
-name: test-install
+name: package-validation
 
 on:
   pull_request:
     paths:
-      - 'scripts/install.sh'
-      - '.github/workflows/test-install.yaml'
+      - "install.js"
+      - "package.json"
+      - ".npmignore"
+      - "README.md"
+      - "docs/BUILDING.md"
+      - ".github/workflows/release.yaml"
+      - ".github/workflows/npm-publish.yaml"
+      - ".github/workflows/test-install.yaml"
 
 jobs:
-  test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  validate-package:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Run install script
-        run: sh ./scripts/install.sh
-        env:
-          OLLAMA_NO_START: 1 # do not start app
-      - name: Verify ollama is available
-        run: ollama --version
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate installer syntax
+        run: node -c install.js
+
+      - name: Validate npm package contents
+        run: npm pack --dry-run
