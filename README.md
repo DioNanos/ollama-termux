@@ -198,4 +198,4 @@ Still required before public publish:
 This project is distributed under the MIT license.
 
 - Original upstream work: [ollama/ollama](https://github.com/ollama/ollama)
-- Termux fork work: DioNanos
+- Termux fork work: Davide A. Gugliemi
