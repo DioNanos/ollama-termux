@@ -1,0 +1,33 @@
+{
+  "name": "@mmmbuto/ollama-termux",
+  "version": "0.1.0",
+  "description": "Ollama fork optimized for Termux/Android ARM64 smartphones with ARMv8.2+ CPU optimizations",
+  "keywords": ["ollama", "termux", "android", "arm64", "cli", "ai", "inference", "llm"],
+  "homepage": "https://github.com/DioNanos/ollama-termux#readme",
+  "bugs": {
+    "url": "https://github.com/DioNanos/ollama-termux/issues"
+  },
+  "license": "MIT",
+  "author": "DioNanos <noreply@github.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DioNanos/ollama-termux.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "android"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "bin": {
+    "ollama-termux": "./install.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
