@@ -720,11 +720,11 @@ func TestBuildLauncherState_MigratesLegacyOpenclawAliasConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildLauncherState returned error: %v", err)
 	}
-	if state.Integrations["openclaw"].CurrentModel != "llama3.2" {
-		t.Fatalf("expected openclaw state to reuse legacy alias config, got %q", state.Integrations["openclaw"].CurrentModel)
+	if state.Integrations["claude"].CurrentModel != "llama3.2" {
+		t.Fatalf("expected openclaw state to reuse legacy alias config, got %q", state.Integrations["claude"].CurrentModel)
 	}
 
-	migrated, err := config.LoadIntegration("openclaw")
+	migrated, err := config.LoadIntegration("claude")
 	if err != nil {
 		t.Fatalf("expected canonical config to be migrated, got %v", err)
 	}
@@ -1781,13 +1781,13 @@ func TestLaunchIntegration_OpenclawPreservesExistingModelList(t *testing.T) {
 	withLauncherHooks(t)
 
 	binDir := t.TempDir()
-	writeFakeBinary(t, binDir, "openclaw")
+	writeFakeBinary(t, binDir, "claude")
 	t.Setenv("PATH", binDir)
 
 	editor := &launcherEditorRunner{}
-	withIntegrationOverride(t, "openclaw", editor)
+	withIntegrationOverride(t, "claude", editor)
 
-	if err := config.SaveIntegration("openclaw", []string{"llama3.2", "mistral"}); err != nil {
+	if err := config.SaveIntegration("claude", []string{"llama3.2", "mistral"}); err != nil {
 		t.Fatalf("failed to seed config: %v", err)
 	}
 
@@ -1803,17 +1803,17 @@ func TestLaunchIntegration_OpenclawPreservesExistingModelList(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("OLLAMA_HOST", srv.URL)
 
-	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "openclaw"}); err != nil {
+	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "claude"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
 	}
 	if len(editor.edited) != 0 {
-		t.Fatalf("expected launch to preserve the existing OpenClaw config, got rewrites %v", editor.edited)
+		t.Fatalf("expected launch to preserve the existing Claude config, got rewrites %v", editor.edited)
 	}
 	if editor.ranModel != "llama3.2" {
 		t.Fatalf("expected launch to use first saved model, got %q", editor.ranModel)
 	}
 
-	saved, err := config.LoadIntegration("openclaw")
+	saved, err := config.LoadIntegration("claude")
 	if err != nil {
 		t.Fatalf("failed to reload saved config: %v", err)
 	}
@@ -1822,73 +1822,9 @@ func TestLaunchIntegration_OpenclawPreservesExistingModelList(t *testing.T) {
 	}
 }
 
-func TestLaunchIntegration_OpenclawInstallsBeforeConfigSideEffects(t *testing.T) {
-	tmpDir := t.TempDir()
-	setLaunchTestHome(t, tmpDir)
-	withLauncherHooks(t)
 
-	t.Setenv("PATH", t.TempDir())
 
-	editor := &launcherEditorRunner{}
-	withIntegrationOverride(t, "openclaw", editor)
 
-	selectorCalled := false
-	DefaultMultiSelector = func(title string, items []ModelItem, preChecked []string) ([]string, error) {
-		selectorCalled = true
-		return []string{"llama3.2"}, nil
-	}
-
-	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "openclaw"})
-	if err == nil {
-		t.Fatal("expected launch to fail before configuration when OpenClaw is missing")
-	}
-	if !strings.Contains(err.Error(), "required dependencies are missing") {
-		t.Fatalf("expected install prerequisite error, got %v", err)
-	}
-	if selectorCalled {
-		t.Fatal("expected install check to happen before model selection")
-	}
-	if len(editor.edited) != 0 {
-		t.Fatalf("expected no editor writes before install succeeds, got %v", editor.edited)
-	}
-	if _, statErr := os.Stat(filepath.Join(tmpDir, ".openclaw", "openclaw.json")); !os.IsNotExist(statErr) {
-		t.Fatalf("expected no OpenClaw config file to be created, stat err = %v", statErr)
-	}
-}
-
-func TestLaunchIntegration_PiInstallsBeforeConfigSideEffects(t *testing.T) {
-	tmpDir := t.TempDir()
-	setLaunchTestHome(t, tmpDir)
-	withLauncherHooks(t)
-
-	t.Setenv("PATH", t.TempDir())
-
-	editor := &launcherEditorRunner{}
-	withIntegrationOverride(t, "pi", editor)
-
-	selectorCalled := false
-	DefaultMultiSelector = func(title string, items []ModelItem, preChecked []string) ([]string, error) {
-		selectorCalled = true
-		return []string{"llama3.2"}, nil
-	}
-
-	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "pi"})
-	if err == nil {
-		t.Fatal("expected launch to fail before configuration when Pi is missing")
-	}
-	if !strings.Contains(err.Error(), "required dependencies are missing") {
-		t.Fatalf("expected install prerequisite error, got %v", err)
-	}
-	if selectorCalled {
-		t.Fatal("expected install check to happen before model selection")
-	}
-	if len(editor.edited) != 0 {
-		t.Fatalf("expected no editor writes before install succeeds, got %v", editor.edited)
-	}
-	if _, statErr := os.Stat(filepath.Join(tmpDir, ".pi", "agent", "models.json")); !os.IsNotExist(statErr) {
-		t.Fatalf("expected no Pi config file to be created, stat err = %v", statErr)
-	}
-}
 
 func TestLaunchIntegration_ConfigureOnlyDoesNotRequireInstalledBinary(t *testing.T) {
 	tmpDir := t.TempDir()

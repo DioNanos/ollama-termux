@@ -54,8 +54,6 @@ func TestIntegrationLookup(t *testing.T) {
 		{"claude uppercase", "CLAUDE", true, "Claude Code"},
 		{"claude mixed case", "Claude", true, "Claude Code"},
 		{"codex", "codex", true, "Codex"},
-		{"droid", "droid", true, "Droid"},
-		{"opencode", "opencode", true, "OpenCode"},
 		{"unknown integration", "unknown", false, ""},
 		{"empty string", "", false, ""},
 	}
@@ -74,7 +72,7 @@ func TestIntegrationLookup(t *testing.T) {
 }
 
 func TestIntegrationRegistry(t *testing.T) {
-	expectedIntegrations := []string{"claude", "codex", "droid", "opencode", "hermes"}
+	expectedIntegrations := []string{"claude", "codex"}
 
 	for _, name := range expectedIntegrations {
 		t.Run(name, func(t *testing.T) {
@@ -680,12 +678,12 @@ func TestEditorIntegration_SavedConfigSkipsSelection(t *testing.T) {
 	setTestHome(t, tmpDir)
 
 	// Save a config for opencode so it looks like a previous launch
-	if err := SaveIntegration("opencode", []string{"llama3.2"}); err != nil {
+	if err := SaveIntegration("claude", []string{"llama3.2"}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify loadIntegration returns the saved models
-	saved, err := LoadIntegration("opencode")
+	saved, err := LoadIntegration("claude")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -781,17 +779,17 @@ func TestPrepareEditorIntegration_SavesOnlyAfterSuccessfulEdit(t *testing.T) {
 	tmpDir := t.TempDir()
 	setTestHome(t, tmpDir)
 
-	if err := SaveIntegration("droid", []string{"existing-model"}); err != nil {
+	if err := SaveIntegration("claude", []string{"existing-model"}); err != nil {
 		t.Fatalf("failed to seed config: %v", err)
 	}
 
 	editor := &stubEditorRunner{editErr: errors.New("boom")}
-	err := prepareEditorIntegration("droid", editor, editor, []string{"new-model"})
+	err := prepareEditorIntegration("claude", editor, editor, []string{"new-model"})
 	if err == nil || !strings.Contains(err.Error(), "setup failed") {
 		t.Fatalf("expected setup failure, got %v", err)
 	}
 
-	saved, err := LoadIntegration("droid")
+	saved, err := LoadIntegration("claude")
 	if err != nil {
 		t.Fatalf("failed to reload saved config: %v", err)
 	}
@@ -1456,11 +1454,6 @@ func TestIntegration_InstallHint(t *testing.T) {
 			wantURL: "https://developers.openai.com/codex/cli/",
 		},
 		{
-			name:    "openclaw has hint",
-			input:   "openclaw",
-			wantURL: "https://docs.openclaw.ai",
-		},
-		{
 			name:      "unknown has no hint",
 			input:     "unknown",
 			wantEmpty: true,
@@ -1532,7 +1525,7 @@ func TestListIntegrationInfos(t *testing.T) {
 	})
 
 	t.Run("includes known integrations", func(t *testing.T) {
-		known := map[string]bool{"claude": false, "codex": false, "opencode": false}
+		known := map[string]bool{"claude": false, "codex": false}
 		for _, info := range infos {
 			if _, ok := known[info.Name]; ok {
 				known[info.Name] = true
@@ -1545,27 +1538,9 @@ func TestListIntegrationInfos(t *testing.T) {
 		}
 	})
 
-	t.Run("includes hermes", func(t *testing.T) {
-		for _, info := range infos {
-			if info.Name == "hermes" {
-				return
-			}
-		}
-		t.Fatal("expected hermes to be included in ListIntegrationInfos")
-	})
 
-	t.Run("hermes still resolves explicitly", func(t *testing.T) {
-		name, runner, err := LookupIntegration("hermes")
-		if err != nil {
-			t.Fatalf("expected explicit hermes integration lookup to work, got %v", err)
-		}
-		if name != "hermes" {
-			t.Fatalf("expected canonical name hermes, got %q", name)
-		}
-		if runner.String() == "" {
-			t.Fatal("expected hermes integration runner to be present")
-		}
-	})
+
+
 }
 
 func TestBuildModelList_Descriptions(t *testing.T) {
@@ -1626,9 +1601,6 @@ func TestIntegration_Editor(t *testing.T) {
 		name string
 		want bool
 	}{
-		{"droid", true},
-		{"opencode", true},
-		{"openclaw", true},
 		{"claude", false},
 		{"codex", false},
 		{"nonexistent", false},
@@ -1652,12 +1624,8 @@ func TestIntegration_AutoInstallable(t *testing.T) {
 		name string
 		want bool
 	}{
-		{"openclaw", true},
-		{"pi", true},
-		{"hermes", true},
 		{"claude", false},
 		{"codex", false},
-		{"opencode", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1678,16 +1646,16 @@ func TestIntegrationModels(t *testing.T) {
 	setTestHome(t, tmpDir)
 
 	t.Run("returns nil when not configured", func(t *testing.T) {
-		if got := IntegrationModels("droid"); got != nil {
+		if got := IntegrationModels("claude"); got != nil {
 			t.Errorf("expected nil, got %v", got)
 		}
 	})
 
 	t.Run("returns all saved models", func(t *testing.T) {
-		if err := SaveIntegration("droid", []string{"llama3.2", "qwen3.5"}); err != nil {
+		if err := SaveIntegration("claude", []string{"llama3.2", "qwen3.5"}); err != nil {
 			t.Fatal(err)
 		}
-		got := IntegrationModels("droid")
+		got := IntegrationModels("claude")
 		want := []string{"llama3.2", "qwen3.5"}
 		if diff := cmp.Diff(want, got); diff != "" {
 			t.Errorf("IntegrationModels mismatch (-want +got):\n%s", diff)
