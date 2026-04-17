@@ -72,6 +72,9 @@ for variant in "${GGML_VARIANTS[@]}"; do
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
         -DGGML_VULKAN=OFF \
         -DGGML_CUDA=OFF \
+        -DGGML_HIP=OFF \
+        -DMLX_ENGINE=OFF \
+        -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=TRUE \
         -GNinja
 
     ninja -C "$variant_dir" ggml-cpu
