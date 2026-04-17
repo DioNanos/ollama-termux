@@ -2,36 +2,41 @@
 
 ## Overview
 
-There are two components to build:
+There are two ways to install:
 
-1. **Go binary** — can be built directly on Termux
-2. **ggml shared libraries (.so)** — must be cross-compiled from a Linux desktop (MGM)
+1. **Pre-built (recommended)** — Download release tarball via `npm install -g @mmmbuto/ollama-termux`
+2. **Cross-compile from MGM** — Build Go binary + ggml `.so` on a Linux desktop, deploy to phone
 
-## 1. Go Binary (Termux Native)
+## 1. Pre-built Install (Termux)
 
 ```bash
-pkg install golang -y
-git clone https://github.com/DioNanos/ollama-termux.git
-cd ollama-termux
-go build -o ollama-termux -ldflags="-s -w" -trimpath .
+npm install -g @mmmbuto/ollama-termux
 ```
 
-## 2. ggml Libraries (Cross-Compile on MGM)
+This downloads a tarball with the Go binary and all ggml backends. No toolchain needed.
 
-### Prerequisites on MGM (Linux Mint, x86_64)
+## 2. Cross-Compile from MGM (Full Build)
+
+Use `scripts/build_termux.sh` for the canonical build:
 
 ```bash
-# Docker (if not installed)
-sudo apt update && sudo apt install docker.io -y
-sudo usermod -aG docker $USER
-newgrp docker
+export NDK_ROOT=~/android-ndk/android-ndk-r27c
+./scripts/build_termux.sh
+```
 
+Output: `dist/ollama-termux-<version>-android-arm64.tar.gz`
+
+### Prerequisites on MGM
+
+```bash
 # Android NDK r27c (LLVM 18, supports ARMv8.2+ targets)
 mkdir -p ~/android-ndk
 cd ~/android-ndk
 wget https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
 unzip android-ndk-r27c-linux.zip
 export NDK_ROOT=~/android-ndk/android-ndk-r27c
+
+# Go >= 1.24, CMake >= 3.22, Ninja
 ```
 
 ### CMake Cross-Compilation Patches
@@ -52,38 +57,16 @@ install(TARGETS ggml-base ${CPU_VARIANTS}
 endif()
 ```
 
-**CMakeLists.txt** - Fix Vulkan find_package:
-```cmake
-find_package(Vulkan COMPONENTS glslc)
-```
-
-### Build Command
+### Deploy to Phone
 
 ```bash
-cd ~/Dev/60_toolchains/ollama-termux
-mkdir -p build/termux && cd build/termux
-cmake ../.. \
-  -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
-  -DANDROID_ABI=arm64-v8a \
-  -DANDROID_PLATFORM=android-28 \
-  -DANDROID_ARM_NEON=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+i8mm+fp16 -O3 -flto" \
-  -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+i8mm+fp16 -O3 -flto" \
-  -DGGML_VULKAN=OFF \
-  -DGGML_CUDA=OFF \
-  -GNinja
-ninja ggml-cpu
-```
+# Via SSH (sshd running on Termux, port 8022)
+scp dist/ollama-termux-*-android-arm64.tar.gz pixel9:~/
 
-### Copy .so to Phone
-
-```bash
-# Files are at:
-# build/termux/lib/ollama/libggml-cpu-android_armv8.2_1.so
-
-# Copy via SSH to Pixel 9 Pro (Termux)
-scp -P 8022 build/termux/lib/ollama/libggml-cpu-android_armv8.2_1.so dag@localhost:/data/data/com.termux/files/usr/lib/ollama/
+# On Termux:
+cd /data/data/com.termux/files/usr
+tar -xzf ~/ollama-termux-*-android-arm64.tar.gz
+chmod +x bin/ollama
 ```
 
 ### Verify Backend Selection
@@ -95,28 +78,48 @@ ollama serve --verbose 2>&1 | grep -i "ggml\|cpu\|backend"
 
 The ARM feature detection (HWCAP) in ggml automatically selects the best `.so` variant.
 
-## 3. Dependencies Checklist
+## 3. Manual ggml Build (One Variant)
+
+If you only need one variant:
+
+```bash
+mkdir -p build/termux && cd build/termux
+cmake ../.. \
+  -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
+  -DANDROID_ABI=arm64-v8a \
+  -DANDROID_PLATFORM=android-28 \
+  -DANDROID_ARM_NEON=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+  -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
+  -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
+  -DGGML_VULKAN=OFF \
+  -DGGML_CUDA=OFF \
+  -GNinja
+ninja ggml-cpu
+```
+
+## 4. Dependencies Checklist
 
 ### On Termux
-- [x] `golang` >= 1.24
 - [x] `nodejs-lts` >= 18
 - [x] `@anthropic-ai/claude-code` (npm)
 - [x] `@mmmbuto/codex-cli-termux` (npm)
-- [x] Existing ollama package (`pkg install ollama`) for ggml `.so` files
+- [x] `golang` >= 1.24 (only for manual on-device build)
 
 ### On MGM
-- [x] Docker
 - [x] Android NDK r27c+
+- [x] Go >= 1.24
 - [x] CMake >= 3.22
-- [x] GCC/Clang with ARM cross-compilation support
+- [x] Ninja
 - [ ] ~10 GB free disk space
 
-## 4. Build Targets
+## 5. Build Targets
 
 | Target | Architecture | Flags | Device |
 |--------|-------------|-------|--------|
 | armv8.0 | ARMv8.0-A | baseline | Old phones (fallback) |
-| armv8.2 | ARMv8.2-A +dotprod +fp16 | `-march=armv8.2-a+dotprod+fp16` | Pixel 9 Pro, Galaxy S24+ |
-| armv8.6 | ARMv8.6-A +sve +i8mm | `-march=armv8.6-a+dotprod+fp16+i8mm+sve` | Future devices |
+| armv8.2 | ARMv8.2-A +dotprod +fp16 | `-march=armv8.2-a+dotprod+fp16` | Pixel 9 Pro, Galaxy S24+, Galaxy S25 |
+| armv8.6 | ARMv8.6-A +dotprod +fp16 +i8mm +sve2 | `-march=armv8.6-a+dotprod+fp16+i8mm+sve2` | Pixel 9 Pro (Cortex-X4), Galaxy S25 Ultra (Oryon) |
 
-For Pixel 9 Pro specifically: `armv8.2` with `dotprod` + `fp16` provides the best balance of performance and compatibility.
+Note: `i8mm` is an ARMv8.6-A feature. The armv8.2 build deliberately omits it for broader compatibility. The armv8.6 build targets newer cores (Cortex-X4, Oryon) that support the full feature set including SVE2.

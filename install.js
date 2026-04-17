@@ -2,144 +2,187 @@
 /**
  * ollama-termux installer for Termux/Android
  *
- * This script:
- * 1. Clones ollama-termux if not present
- * 2. Builds the Go binary
- * 3. Installs to Termux prefix
+ * Downloads a pre-built release tarball from GitHub and installs
+ * the binary + ggml .so backends to the Termux prefix.
+ * No Go toolchain required on-device.
  */
 
-const { execSync, spawn } = require('child_process');
+const { execFileSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
 const path = require('path');
 
 const TERMUX_PREFIX = '/data/data/com.termux/files/usr';
 const OLLAMA_BIN = path.join(TERMUX_PREFIX, 'bin', 'ollama');
 const OLLAMA_LIB = path.join(TERMUX_PREFIX, 'lib', 'ollama');
-const INSTALL_DIR = path.join(process.env.HOME || '/data/data/com.termux/files/home', 'ollama-termux');
+const GITHUB_REPO = 'DioNanos/ollama-termux';
+const VERSION = require('./package.json').version;
 
 function log(msg) {
   console.log(`[ollama-termux] ${msg}`);
 }
 
 function isTermux() {
-  return fs.existsSync('/data/data/com.termux/files/usr');
+  return fs.existsSync(TERMUX_PREFIX);
 }
 
-function isGitInstalled() {
-  try {
-    execSync('git --version', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
+function fetchUrl(url) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http;
+    const follow = (u, redirects) => {
+      if (redirects > 5) return reject(new Error('too many redirects'));
+      mod.get(u, { headers: { 'User-Agent': 'ollama-termux-installer' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          follow(res.headers.location, redirects + 1);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode} for ${u}`));
+          return;
+        }
+        resolve(res);
+      }).on('error', reject);
+    };
+    follow(url, 0);
+  });
+}
+
+async function downloadAndVerify(url, dest, expectedSha256) {
+  const tmpDest = dest + '.tmp';
+  const res = await fetchUrl(url);
+  const fileStream = fs.createWriteStream(tmpDest);
+  const hash = crypto.createHash('sha256');
+
+  res.pipe(hash);
+  res.pipe(fileStream);
+
+  await new Promise((resolve, reject) => {
+    fileStream.on('finish', resolve);
+    fileStream.on('error', reject);
+    res.on('error', reject);
+  });
+
+  const actualSha = hash.digest('hex');
+  if (expectedSha256 && actualSha !== expectedSha256) {
+    fs.unlinkSync(tmpDest);
+    throw new Error(`SHA256 mismatch: expected ${expectedSha256}, got ${actualSha}`);
+  }
+
+  fs.renameSync(tmpDest, dest);
+  return actualSha;
+}
+
+function backupIfExists(filePath) {
+  if (fs.existsSync(filePath)) {
+    const backup = filePath + '.orig';
+    log(`Backing up ${path.basename(filePath)} to ${path.basename(backup)}`);
+    fs.copyFileSync(filePath, backup);
   }
 }
 
-function isGoInstalled() {
-  try {
-    execSync('go version', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function run(cmd, args = []) {
-  log(`Running: ${cmd} ${args.join(' ')}`);
-  try {
-    const result = execSync(`${cmd} ${args.join(' ')}`, {
-      cwd: INSTALL_DIR,
-      stdio: 'inherit',
-      timeout: 600000 // 10 min for build
-    });
-    return true;
-  } catch (e) {
-    log(`Error running: ${cmd}`);
-    return false;
-  }
-}
-
-function main() {
+async function main() {
   if (!isTermux()) {
-    console.log('[ollama-termux] This package is for Termux only.');
+    console.log('[ollama-termux] This installer is for Termux/Android only.');
     console.log('');
-    console.log('For manual installation:');
-    console.log('  git clone https://github.com/DioNanos/ollama-termux.git');
-    console.log('  cd ollama-termux');
-    console.log('  go build -o ollama-termux -ldflags="-s -w" -trimpath .');
-    console.log('  cp ollama-termux /data/data/com.termux/files/usr/bin/');
-    console.log('  chmod +x /data/data/com.termux/files/usr/bin/ollama');
-    console.log('');
-    console.log('See: https://github.com/DioNanos/ollama-termux#quick-start');
+    console.log('For manual installation or cross-compilation, see:');
+    console.log('  https://github.com/DioNanos/ollama-termux#building');
     return;
   }
 
-  log('Installing ollama-termux on Termux...');
+  log(`Installing ollama-termux v${VERSION}...`);
   log('');
 
-  // Check prerequisites
-  if (!isGitInstalled()) {
-    log('git not found. Installing...');
-    execSync('pkg install git -y', { stdio: 'inherit' });
+  const tarballName = `ollama-termux-${VERSION}-android-arm64.tar.gz`;
+  const tmpDir = path.join(process.env.TMPDIR || '/tmp', 'ollama-termux-install');
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  const tarballPath = path.join(tmpDir, tarballName);
+
+  // Download from GitHub releases
+  const tarballUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${tarballName}`;
+  const sha256Url = tarballUrl + '.sha256';
+
+  log(`Downloading ${tarballName}...`);
+  let expectedSha = null;
+  try {
+    const shaRes = await fetchUrl(sha256Url);
+    const shaText = await new Promise((resolve, reject) => {
+      let data = '';
+      shaRes.on('data', (chunk) => data += chunk);
+      shaRes.on('end', () => resolve(data));
+      shaRes.on('error', reject);
+    });
+    expectedSha = shaText.trim().split(/\s+/)[0];
+    log(`Expected SHA256: ${expectedSha.substring(0, 16)}...`);
+  } catch {
+    log('Note: SHA256 checksum not available, skipping verification');
   }
 
-  if (!isGoInstalled()) {
-    log('golang not found. Installing...');
-    execSync('pkg install golang -y', { stdio: 'inherit' });
-  }
-
-  // Clone or update repo
-  if (!fs.existsSync(INSTALL_DIR)) {
-    log(`Cloning ollama-termux to ${INSTALL_DIR}...`);
-    try {
-      execSync(`git clone https://github.com/DioNanos/ollama-termux.git "${INSTALL_DIR}"`, {
-        stdio: 'inherit',
-        timeout: 60000
-      });
-    } catch (e) {
-      log('Failed to clone repository');
-      return;
+  try {
+    const actualSha = await downloadAndVerify(tarballUrl, tarballPath, expectedSha);
+    if (!expectedSha) {
+      log(`Downloaded (SHA256: ${actualSha.substring(0, 16)}...)`);
+    } else {
+      log('Checksum verified');
     }
-  } else {
-    log('Updating existing installation...');
-    try {
-      execSync('git pull origin main', { cwd: INSTALL_DIR, stdio: 'inherit' });
-    } catch (e) {
-      log('Note: Could not pull updates (may be on detached HEAD)');
+  } catch (e) {
+    log(`Download failed: ${e.message}`);
+    log('');
+    log('The pre-built binary may not be available for this version.');
+    log('Build manually with:');
+    log('  pkg install golang');
+    log('  git clone https://github.com/DioNanos/ollama-termux.git');
+    log('  cd ollama-termux && go build -o ollama -ldflags="-s -w" -trimpath .');
+    log('  cp ollama ' + OLLAMA_BIN);
+    process.exit(1);
+  }
+
+  // Extract tarball
+  log('Extracting...');
+  execFileSync('tar', ['-xzf', tarballPath, '-C', tmpDir], { stdio: 'pipe' });
+
+  // Backup existing files
+  backupIfExists(OLLAMA_BIN);
+
+  // Install binary
+  const extractedBin = path.join(tmpDir, 'bin', 'ollama');
+  if (fs.existsSync(extractedBin)) {
+    fs.copyFileSync(extractedBin, OLLAMA_BIN);
+    fs.chmodSync(OLLAMA_BIN, 0o755);
+    log('Installed: ' + OLLAMA_BIN);
+  }
+
+  // Install ggml backends
+  const extractedLib = path.join(tmpDir, 'lib', 'ollama');
+  if (fs.existsSync(extractedLib)) {
+    fs.mkdirSync(OLLAMA_LIB, { recursive: true });
+    const soFiles = fs.readdirSync(extractedLib).filter(f => f.endsWith('.so'));
+    for (const so of soFiles) {
+      const src = path.join(extractedLib, so);
+      const dst = path.join(OLLAMA_LIB, so);
+      backupIfExists(dst);
+      fs.copyFileSync(src, dst);
+      log('Installed: ' + path.join('lib/ollama', so));
     }
   }
 
-  // Build
-  log('');
-  log('Building ollama-termux (this may take a while)...');
-  const built = run('go', ['build', '-o', 'ollama-termux', '-ldflags=-s -w', '-trimpath', '.']);
-
-  if (!built) {
-    log('Build failed. Try manually:');
-    log(`  cd ${INSTALL_DIR}`);
-    log('  go build -o ollama-termux -ldflags="-s -w" -trimpath .');
-    return;
-  }
-
-  // Backup existing
-  if (fs.existsSync(OLLAMA_BIN)) {
-    const backup = `${OLLAMA_BIN}.backup`;
-    log(`Backing up existing ollama to ${backup}`);
-    fs.copyFileSync(OLLAMA_BIN, backup);
-  }
-
-  // Install
-  log('Installing binary...');
-  fs.copyFileSync(path.join(INSTALL_DIR, 'ollama-termux'), OLLAMA_BIN);
-  fs.chmodSync(OLLAMA_BIN, 0o755);
+  // Cleanup
+  try {
+    fs.rmSync(tmpDir, { recursive: true });
+  } catch {}
 
   log('');
-  log('✓ ollama-termux installed successfully!');
+  log('ollama-termux installed successfully!');
   log('');
-  log('To use:');
+  log('Quick start:');
   log('  ollama serve &');
-  log('  ollama pull <model>');
-  log('');
-  log('For optimized ggml .so files, see BUILDING.md');
+  log('  ollama pull qwen3.5');
+  log('  ollama launch claude --model qwen3.5');
 }
 
-main();
+main().catch((e) => {
+  console.error('[ollama-termux] Installation failed:', e.message);
+  process.exit(1);
+});
