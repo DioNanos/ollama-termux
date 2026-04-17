@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-compile ollama-termux for Android ARM64 on a Linux host (MGM).
+# Cross-compile ollama-termux for Android ARM64 on a Linux host.
 # Produces a tarball with Go binary + optimized ggml .so backends.
 #
 # Prerequisites:
@@ -174,7 +174,7 @@ echo ""
 
 echo "=== Build complete ==="
 echo "Deploy to Termux:"
-echo "  scp $TARBALL_PATH pixel9:~/"
+echo "  scp $TARBALL_PATH <device>:~/"
 echo "  # On Termux:"
 echo "  cd /data/data/com.termux/files/usr"
 echo "  tar -xzf ~/ollama-termux-$VERSION-android-arm64.tar.gz"

@@ -83,8 +83,8 @@ The installer downloads that tarball and extracts it into the Termux prefix.
 ## Manual Device Install
 
 ```bash
-# Copy tarball to the phone
-scp dist/ollama-termux-*-android-arm64.tar.gz pixel9:~/
+# Copy tarball to your Android device
+scp dist/ollama-termux-*-android-arm64.tar.gz <device>:~/
 
 # On Termux
 cd /data/data/com.termux/files/usr

@@ -132,7 +132,7 @@ ollama launch codex --model qwen2.5:3b
 
 ## Build And Release
 
-### Build locally on MGM / Linux
+### Build locally on Linux
 
 ```bash
 export NDK_ROOT=~/android-ndk/android-ndk-r27c
