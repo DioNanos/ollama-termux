@@ -41,6 +41,7 @@ CLANGXX="$TOOLBIN/aarch64-linux-android28-clang++"
 LLVM_AR="$TOOLBIN/llvm-ar"
 LLVM_RANLIB="$TOOLBIN/llvm-ranlib"
 LLVM_STRIP="$TOOLBIN/llvm-strip"
+LINKER_WRAPPER="$BUILD_DIR/aarch64-linux-android28-clang++-filtered"
 
 for tool in "$CLANG" "$CLANGXX" "$LLVM_AR" "$LLVM_RANLIB" "$LLVM_STRIP"; do
     if [ ! -f "$tool" ]; then
@@ -53,8 +54,27 @@ echo "=== ollama-termux build (version $VERSION) ==="
 echo "NDK: $NDK_ROOT"
 echo ""
 
+mkdir -p "$BUILD_DIR"
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
+
+# Go's external linker path for Android can still inherit Linux-only libraries
+# such as -lrt and -lpthread. Filter them before invoking the NDK linker.
+cat > "$LINKER_WRAPPER" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+args=()
+for arg in "\$@"; do
+    case "\$arg" in
+        -lrt|-lpthread) ;;
+        *) args+=("\$arg") ;;
+    esac
+done
+
+exec "$CLANGXX" "\${args[@]}"
+EOF
+chmod +x "$LINKER_WRAPPER"
 
 # --- Step 1: Build ggml .so backends ---
 
@@ -115,8 +135,8 @@ export CGO_ENABLED=1
 export GOOS=android
 export GOARCH=arm64
 export CC="$CLANG"
-export CXX="$CLANGXX"
-export LD="$CLANGXX"
+export CXX="$LINKER_WRAPPER"
+export LD="$LINKER_WRAPPER"
 export AR="$LLVM_AR"
 export RANLIB="$LLVM_RANLIB"
 export STRIP="$LLVM_STRIP"
