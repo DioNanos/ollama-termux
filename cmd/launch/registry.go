@@ -33,7 +33,7 @@ type IntegrationInfo struct {
 	Description string
 }
 
-var launcherIntegrationOrder = []string{"openclaw", "claude", "opencode", "hermes", "codex", "copilot", "droid", "pi"}
+var launcherIntegrationOrder = []string{"claude", "codex"}
 
 var integrationSpecs = []*IntegrationSpec{
 	{
@@ -49,19 +49,6 @@ var integrationSpecs = []*IntegrationSpec{
 		},
 	},
 	{
-		Name:        "cline",
-		Runner:      &Cline{},
-		Description: "Autonomous coding agent with parallel execution",
-		Hidden:      true,
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, err := exec.LookPath("cline")
-				return err == nil
-			},
-			Command: []string{"npm", "install", "-g", "cline"},
-		},
-	},
-	{
 		Name:        "codex",
 		Runner:      &Codex{},
 		Description: "OpenAI's open-source coding agent",
@@ -72,108 +59,6 @@ var integrationSpecs = []*IntegrationSpec{
 			},
 			URL:     "https://developers.openai.com/codex/cli/",
 			Command: []string{"npm", "install", "-g", "@openai/codex"},
-		},
-	},
-	{
-		Name:        "copilot",
-		Runner:      &Copilot{},
-		Aliases:     []string{"copilot-cli"},
-		Description: "GitHub's AI coding agent for the terminal",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, err := (&Copilot{}).findPath()
-				return err == nil
-			},
-			URL: "https://github.com/features/copilot/cli/",
-		},
-	},
-	{
-		Name:        "droid",
-		Runner:      &Droid{},
-		Description: "Factory's coding agent across terminal and IDEs",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, err := exec.LookPath("droid")
-				return err == nil
-			},
-			URL: "https://docs.factory.ai/cli/getting-started/quickstart",
-		},
-	},
-	{
-		Name:        "opencode",
-		Runner:      &OpenCode{},
-		Description: "Anomaly's open-source coding agent",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, ok := findOpenCode()
-				return ok
-			},
-			URL: "https://opencode.ai",
-		},
-	},
-	{
-		Name:        "openclaw",
-		Runner:      &Openclaw{},
-		Aliases:     []string{"clawdbot", "moltbot"},
-		Description: "Personal AI with 100+ skills",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				if _, err := exec.LookPath("openclaw"); err == nil {
-					return true
-				}
-				if _, err := exec.LookPath("clawdbot"); err == nil {
-					return true
-				}
-				return false
-			},
-			EnsureInstalled: func() error {
-				_, err := ensureOpenclawInstalled()
-				return err
-			},
-			URL: "https://docs.openclaw.ai",
-		},
-	},
-	{
-		Name:        "pi",
-		Runner:      &Pi{},
-		Description: "Minimal AI agent toolkit with plugin support",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, err := exec.LookPath("pi")
-				return err == nil
-			},
-			EnsureInstalled: func() error {
-				_, err := ensurePiInstalled()
-				return err
-			},
-			Command: []string{"npm", "install", "-g", "@mariozechner/pi-coding-agent@latest"},
-		},
-	},
-	{
-		Name:        "hermes",
-		Runner:      &Hermes{},
-		Description: "Self-improving AI agent built by Nous Research",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				return (&Hermes{}).installed()
-			},
-			EnsureInstalled: func() error {
-				return (&Hermes{}).ensureInstalled()
-			},
-			URL: "https://hermes-agent.nousresearch.com/docs/getting-started/installation/",
-		},
-	},
-	{
-		Name:        "vscode",
-		Runner:      &VSCode{},
-		Aliases:     []string{"code"},
-		Description: "Microsoft's open-source AI code editor",
-		Hidden:      true,
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				return (&VSCode{}).findBinary() != ""
-			},
-			URL: "https://code.visualstudio.com",
 		},
 	},
 }

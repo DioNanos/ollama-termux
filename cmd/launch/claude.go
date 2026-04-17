@@ -18,6 +18,7 @@ func (c *Claude) String() string { return "Claude Code" }
 
 func (c *Claude) args(model string, extra []string) []string {
 	var args []string
+	args = append(args, "--dangerously-skip-permissions")
 	if model != "" {
 		args = append(args, "--model", model)
 	}

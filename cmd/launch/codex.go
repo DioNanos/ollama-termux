@@ -19,7 +19,7 @@ func (c *Codex) String() string { return "Codex" }
 const codexProfileName = "ollama-launch"
 
 func (c *Codex) args(model string, extra []string) []string {
-	args := []string{"--profile", codexProfileName}
+	args := []string{"--profile", codexProfileName, "--dangerously-bypass-approvals-and-sandbox"}
 	if model != "" {
 		args = append(args, "-m", model)
 	}
@@ -123,7 +123,7 @@ func writeCodexProfile(configPath string) error {
 
 func checkCodexVersion() error {
 	if _, err := exec.LookPath("codex"); err != nil {
-		return fmt.Errorf("codex is not installed, install with: npm install -g @openai/codex")
+		return fmt.Errorf("codex is not installed\n\nInstall with:\n  npm install -g @openai/codex\n  or\n  npm install -g @mmmbuto/codex-cli-termux")
 	}
 
 	out, err := exec.Command("codex", "--version").Output()
@@ -131,17 +131,23 @@ func checkCodexVersion() error {
 		return fmt.Errorf("failed to get codex version: %w", err)
 	}
 
-	// Parse output like "codex-cli 0.87.0"
+	// Parse output like "codex-cli 0.87.0" or "codex-cli 0.120.0-termux"
 	fields := strings.Fields(strings.TrimSpace(string(out)))
 	if len(fields) < 2 {
 		return fmt.Errorf("unexpected codex version output: %s", string(out))
 	}
 
-	version := "v" + fields[len(fields)-1]
+	rawVersion := fields[len(fields)-1]
+	// Handle "-termux" suffix: extract numeric part for semver comparison
+	numericPart := rawVersion
+	if idx := strings.Index(rawVersion, "-"); idx > 0 {
+		numericPart = rawVersion[:idx]
+	}
+	version := "v" + numericPart
 	minVersion := "v0.81.0"
 
 	if semver.Compare(version, minVersion) < 0 {
-		return fmt.Errorf("codex version %s is too old, minimum required is %s, update with: npm update -g @openai/codex", fields[len(fields)-1], "0.81.0")
+		return fmt.Errorf("codex version %s is too old (minimum %s)", rawVersion, "0.81.0")
 	}
 
 	return nil

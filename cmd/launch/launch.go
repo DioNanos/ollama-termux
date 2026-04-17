@@ -204,24 +204,14 @@ Flags and extra arguments require an integration name.
 
 Supported integrations:
   claude    Claude Code
-  cline     Cline
   codex     Codex
-  copilot   Copilot CLI (aliases: copilot-cli)
-  droid     Droid
-  hermes    Hermes Agent
-  opencode  OpenCode
-  openclaw  OpenClaw (aliases: clawdbot, moltbot)
-  pi        Pi
-  vscode    VS Code (aliases: code)
 
 Examples:
   ollama launch
   ollama launch claude
   ollama launch claude --model <model>
-  ollama launch hermes
-  ollama launch droid --config (does not auto-launch)
-  ollama launch codex -- -p myprofile (pass extra args to integration)
-  ollama launch codex -- --sandbox workspace-write`,
+  ollama launch codex
+  ollama launch codex -- -p myprofile (pass extra args to integration)`,
 		Args:    cobra.ArbitraryArgs,
 		PreRunE: checkServerHeartbeat,
 		RunE: func(cmd *cobra.Command, args []string) error {

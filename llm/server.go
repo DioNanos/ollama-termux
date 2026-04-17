@@ -172,6 +172,26 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 
 	opts.NumBatch = min(opts.NumBatch, opts.NumCtx)
 
+	// Mobile: auto-limit context window based on available memory
+	if isTermux() {
+		memMB := systemInfo.FreeMemory / (1024 * 1024)
+		var maxCtx int
+		switch {
+		case memMB < 2048:
+			maxCtx = 2048
+		case memMB < 4096:
+			maxCtx = 4096
+		case memMB < 8192:
+			maxCtx = 8192
+		default:
+			maxCtx = 0
+		}
+		if maxCtx > 0 && opts.NumCtx > maxCtx {
+			slog.Info("mobile: limiting context window", "requested", opts.NumCtx, "limited", maxCtx, "mem_mb", memMB)
+			opts.NumCtx = maxCtx
+		}
+	}
+
 	loadRequest := LoadRequest{LoraPath: adapters, KvSize: opts.NumCtx * numParallel, BatchSize: opts.NumBatch, Parallel: numParallel, MultiUserCache: envconfig.MultiUserCache()}
 
 	defaultThreads := systemInfo.ThreadCount
@@ -179,6 +199,10 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 		loadRequest.NumThreads = opts.NumThread
 	} else if defaultThreads > 0 {
 		loadRequest.NumThreads = defaultThreads
+		// Mobile: limit threads to avoid LITTLE core overhead and thermal throttling
+		if isTermux() && loadRequest.NumThreads > 5 {
+			loadRequest.NumThreads = 5
+		}
 	}
 
 	// TODO - NUMA support currently doesn't work properly
@@ -197,6 +221,14 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 	}
 
 	fa := envconfig.FlashAttention(f.FlashAttention())
+
+	// Mobile: force-enable flash attention for memory savings on CPU-only inference
+	if !fa && isTermux() {
+		if f.SupportsFlashAttention() {
+			fa = true
+			slog.Info("mobile: flash attention auto-enabled")
+		}
+	}
 
 	// This will disable flash attention unless all GPUs on the system support it, even if we end up selecting a subset
 	// that can handle it.
@@ -1918,4 +1950,9 @@ func (s *ollamaServer) GetDeviceInfos(ctx context.Context) []ml.DeviceInfo {
 		// else no longer running so suppress logging as a failure is expected
 	}
 	return devices
+}
+
+// isTermux reports whether the current environment is Termux on Android.
+func isTermux() bool {
+	return os.Getenv("TERMUX_VERSION") != ""
 }

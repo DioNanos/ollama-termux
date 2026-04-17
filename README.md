@@ -24,7 +24,7 @@ Official Ollama works on Termux but has issues on modern smartphones:
 | RAM detection reports ~1 GB instead of ~11 GB | Android-aware heuristic: 70% of MemTotal |
 | All 8 cores used (thermal throttling on big.LITTLE) | Thread limit to 5 (big cores only) |
 | No flash attention on mobile | Auto-enabled for memory savings |
-| Cloud models shown in TUI (unusable on mobile) | Filtered out, only local models shown |
+| Cloud models shown in TUI (unusable on mobile) | Cloud models kept — best option on CPU-only devices |
 
 ---
 
