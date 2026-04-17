@@ -180,10 +180,10 @@ async function main() {
   log('');
   log('Quick start:');
   log('  ollama serve &');
-  log('  ollama pull qwen3.5');
-  log('  ollama pull gemma4');
-  log('  ollama launch claude --model qwen3.5');
-  log('  ollama launch codex --model gemma4');
+  log('  ollama pull qwen3.5:4b');
+  log('  ollama pull gemma4:e4b');
+  log('  ollama launch claude --model qwen3.5:4b');
+  log('  ollama launch codex --model gemma4:e4b');
 }
 
 main().catch((e) => {

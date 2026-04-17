@@ -21,8 +21,8 @@ import (
 )
 
 var recommendedModels = []ModelItem{
-	{Name: "qwen3.5", Description: "Recommended local default for coding, reasoning, and visual understanding", Recommended: true},
-	{Name: "gemma4", Description: "Recommended local default for reasoning and code generation", Recommended: true},
+	{Name: "qwen3.5:4b", Description: "Recommended local default for coding, reasoning, and visual understanding", Recommended: true},
+	{Name: "gemma4:e4b", Description: "Recommended local default for reasoning and code generation", Recommended: true},
 	{Name: "qwen3.5:cloud", Description: "Cloud-backed qwen3.5 with larger context for agentic tool use", Recommended: true},
 	{Name: "kimi-k2.5:cloud", Description: "Cloud multimodal reasoning with subagents", Recommended: true},
 	{Name: "glm-5.1:cloud", Description: "Cloud reasoning and code generation", Recommended: true},
@@ -30,8 +30,8 @@ var recommendedModels = []ModelItem{
 }
 
 var recommendedVRAM = map[string]string{
-	"gemma4":  "~16GB",
-	"qwen3.5": "~11GB",
+	"gemma4:e4b":  "~16GB",
+	"qwen3.5:4b": "~11GB",
 }
 
 // cloudModelLimit holds context and output token limits for a cloud model.
