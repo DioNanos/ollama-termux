@@ -183,10 +183,12 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 			maxCtx = 4096
 		case memMB < 8192:
 			maxCtx = 8192
+		case memMB < 12288:
+			maxCtx = 16384
 		default:
-			maxCtx = 0
+			maxCtx = 32768
 		}
-		if maxCtx > 0 && opts.NumCtx > maxCtx {
+		if opts.NumCtx > maxCtx {
 			slog.Info("mobile: limiting context window", "requested", opts.NumCtx, "limited", maxCtx, "mem_mb", memMB)
 			opts.NumCtx = maxCtx
 		}
@@ -199,9 +201,12 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 		loadRequest.NumThreads = opts.NumThread
 	} else if defaultThreads > 0 {
 		loadRequest.NumThreads = defaultThreads
-		// Mobile: limit threads to avoid LITTLE core overhead and thermal throttling
-		if isTermux() && loadRequest.NumThreads > 5 {
-			loadRequest.NumThreads = 5
+		if isTermux() {
+			bigCores := countBigCores()
+			if bigCores > 0 && loadRequest.NumThreads > bigCores {
+				loadRequest.NumThreads = bigCores
+				slog.Info("mobile: limiting threads to big cores", "threads", bigCores)
+			}
 		}
 	}
 
@@ -1955,4 +1960,48 @@ func (s *ollamaServer) GetDeviceInfos(ctx context.Context) []ml.DeviceInfo {
 // isTermux reports whether the current environment is Termux on Android.
 func isTermux() bool {
 	return os.Getenv("TERMUX_VERSION") != ""
+}
+
+// countBigCores returns the number of performance cores on Android by reading
+// cpufreq max frequency. Cores with freq >= 75% of the highest frequency are
+// considered big cores. Falls back to half of total CPUs if cpufreq is unavailable.
+func countBigCores() int {
+	entries, err := filepath.Glob("/sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq")
+	if err != nil || len(entries) == 0 {
+		n := runtime.NumCPU() / 2
+		if n < 1 {
+			n = 1
+		}
+		return n
+	}
+	freqs := make([]int64, 0, len(entries))
+	var maxFreq int64
+	for _, p := range entries {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		f, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+		if err != nil {
+			continue
+		}
+		freqs = append(freqs, f)
+		if f > maxFreq {
+			maxFreq = f
+		}
+	}
+	if maxFreq == 0 {
+		return runtime.NumCPU() / 2
+	}
+	threshold := int64(float64(maxFreq) * 0.75)
+	big := 0
+	for _, f := range freqs {
+		if f >= threshold {
+			big++
+		}
+	}
+	if big < 1 {
+		big = 1
+	}
+	return big
 }

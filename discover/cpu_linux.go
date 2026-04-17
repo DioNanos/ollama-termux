@@ -29,15 +29,23 @@ func GetCPUMem() (memInfo, error) {
 
 // adjustMemForAndroid corrects FreeMemory on Android/Termux where MemAvailable
 // is unrealistically low due to aggressive caching by the Android memory manager.
-// It estimates available memory as 70% of MemTotal, which accounts for system
-// reserved memory while reflecting that Android can reclaim cache under pressure.
+// It clamps FreeMemory between 60% and 75% of MemTotal: 60% as a floor to
+// compensate for aggressive Android caching, 75% as a ceiling to avoid the
+// oom_killer when foreground apps are consuming significant RAM.
 func adjustMemForAndroid(mem memInfo) memInfo {
-	if os.Getenv("TERMUX_VERSION") != "" || os.Getenv("PREFIX") == "/data/data/com.termux/files/usr" {
-		estimated := uint64(float64(mem.TotalMemory) * 0.7)
-		if estimated > mem.FreeMemory {
-			mem.FreeMemory = estimated
-		}
+	if os.Getenv("TERMUX_VERSION") == "" && os.Getenv("PREFIX") != "/data/data/com.termux/files/usr" {
+		return mem
 	}
+	floor := uint64(float64(mem.TotalMemory) * 0.60)
+	ceil := uint64(float64(mem.TotalMemory) * 0.75)
+	adjusted := mem.FreeMemory
+	if adjusted < floor {
+		adjusted = floor
+	}
+	if adjusted > ceil {
+		adjusted = ceil
+	}
+	mem.FreeMemory = adjusted
 	return mem
 }
 

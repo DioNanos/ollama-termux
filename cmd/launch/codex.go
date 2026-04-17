@@ -123,7 +123,7 @@ func writeCodexProfile(configPath string) error {
 
 func checkCodexVersion() error {
 	if _, err := exec.LookPath("codex"); err != nil {
-		return fmt.Errorf("codex is not installed\n\nInstall with:\n  npm install -g @openai/codex\n  or\n  npm install -g @mmmbuto/codex-cli-termux")
+		return fmt.Errorf("codex is not installed\n\nInstall with:\n  npm install -g @mmmbuto/codex-cli-termux  (recommended on Termux)\n  or\n  npm install -g @openai/codex")
 	}
 
 	out, err := exec.Command("codex", "--version").Output()

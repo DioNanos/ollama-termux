@@ -58,7 +58,7 @@ var integrationSpecs = []*IntegrationSpec{
 				return err == nil
 			},
 			URL:     "https://developers.openai.com/codex/cli/",
-			Command: []string{"npm", "install", "-g", "@openai/codex"},
+			Command: []string{"npm", "install", "-g", "@mmmbuto/codex-cli-termux"},
 		},
 	},
 }

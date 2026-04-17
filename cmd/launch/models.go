@@ -413,17 +413,11 @@ func buildModelList(existing []modelInfo, preChecked []string, current string) (
 		})
 	}
 
-
 	return items, preChecked, existingModels, cloudModels
 }
 
 // isCloudModelName reports whether the model name has an explicit cloud source.
 func isCloudModelName(name string) bool {
-
-// isTermux reports whether the current environment is Termux on Android.
-func isTermux() bool {
-	return os.Getenv("TERMUX_VERSION") != ""
-}
 	return modelref.HasExplicitCloudSource(name)
 }
 
