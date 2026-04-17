@@ -35,11 +35,19 @@ if [ ! -f "$TOOLCHAIN" ]; then
     exit 1
 fi
 
-CLANG="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang"
-if [ ! -f "$CLANG" ]; then
-    echo "ERROR: NDK clang not found at $CLANG"
-    exit 1
-fi
+TOOLBIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+CLANG="$TOOLBIN/aarch64-linux-android28-clang"
+CLANGXX="$TOOLBIN/aarch64-linux-android28-clang++"
+LLVM_AR="$TOOLBIN/llvm-ar"
+LLVM_RANLIB="$TOOLBIN/llvm-ranlib"
+LLVM_STRIP="$TOOLBIN/llvm-strip"
+
+for tool in "$CLANG" "$CLANGXX" "$LLVM_AR" "$LLVM_RANLIB" "$LLVM_STRIP"; do
+    if [ ! -f "$tool" ]; then
+        echo "ERROR: Required NDK tool not found at $tool"
+        exit 1
+    fi
+done
 
 echo "=== ollama-termux build (version $VERSION) ==="
 echo "NDK: $NDK_ROOT"
@@ -107,6 +115,14 @@ export CGO_ENABLED=1
 export GOOS=android
 export GOARCH=arm64
 export CC="$CLANG"
+export CXX="$CLANGXX"
+export LD="$CLANGXX"
+export AR="$LLVM_AR"
+export RANLIB="$LLVM_RANLIB"
+export STRIP="$LLVM_STRIP"
+export CGO_CFLAGS="-O3"
+export CGO_CXXFLAGS="-O3"
+export CGO_LDFLAGS="-llog"
 
 mkdir -p "$DIST_DIR/bin"
 
