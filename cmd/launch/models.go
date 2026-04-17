@@ -21,12 +21,12 @@ import (
 )
 
 var recommendedModels = []ModelItem{
-	{Name: "kimi-k2.5:cloud", Description: "Multimodal reasoning with subagents", Recommended: true},
-	{Name: "qwen3.5:cloud", Description: "Reasoning, coding, and agentic tool use with vision", Recommended: true},
-	{Name: "glm-5.1:cloud", Description: "Reasoning and code generation", Recommended: true},
-	{Name: "minimax-m2.7:cloud", Description: "Fast, efficient coding and real-world productivity", Recommended: true},
-	{Name: "gemma4", Description: "Reasoning and code generation locally", Recommended: true},
-	{Name: "qwen3.5", Description: "Reasoning, coding, and visual understanding locally", Recommended: true},
+	{Name: "qwen3.5", Description: "Recommended local default for coding, reasoning, and visual understanding", Recommended: true},
+	{Name: "gemma4", Description: "Recommended local default for reasoning and code generation", Recommended: true},
+	{Name: "qwen3.5:cloud", Description: "Cloud-backed qwen3.5 with larger context for agentic tool use", Recommended: true},
+	{Name: "kimi-k2.5:cloud", Description: "Cloud multimodal reasoning with subagents", Recommended: true},
+	{Name: "glm-5.1:cloud", Description: "Cloud reasoning and code generation", Recommended: true},
+	{Name: "minimax-m2.7:cloud", Description: "Fast cloud coding and real-world productivity", Recommended: true},
 }
 
 var recommendedVRAM = map[string]string{

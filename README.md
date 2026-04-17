@@ -118,14 +118,15 @@ Links:
 # Start Ollama
 ollama serve &
 
-# Pull a model
-ollama pull qwen2.5:3b
+# Pull the recommended local models
+ollama pull qwen3.5
+ollama pull gemma4
 
-# Launch Claude Code through Ollama
-ollama launch claude --model qwen2.5:3b
+# Launch Claude Code through Ollama with qwen3.5
+ollama launch claude --model qwen3.5
 
-# Launch Codex through Ollama
-ollama launch codex --model qwen2.5:3b
+# Launch Codex through Ollama with gemma4
+ollama launch codex --model gemma4
 ```
 
 ---

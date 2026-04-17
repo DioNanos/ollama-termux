@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 
 const TERMUX_PREFIX = '/data/data/com.termux/files/usr';
@@ -95,7 +96,8 @@ async function main() {
   log('');
 
   const tarballName = `ollama-termux-${VERSION}-android-arm64.tar.gz`;
-  const tmpDir = path.join(process.env.TMPDIR || '/tmp', 'ollama-termux-install');
+  const tmpBase = process.env.TMPDIR || os.tmpdir() || path.join(TERMUX_PREFIX, 'tmp');
+  const tmpDir = path.join(tmpBase, 'ollama-termux-install');
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const tarballPath = path.join(tmpDir, tarballName);
@@ -178,9 +180,10 @@ async function main() {
   log('');
   log('Quick start:');
   log('  ollama serve &');
-  log('  ollama pull qwen2.5:3b');
-  log('  ollama launch claude --model qwen2.5:3b');
-  log('  ollama launch codex --model qwen2.5:3b');
+  log('  ollama pull qwen3.5');
+  log('  ollama pull gemma4');
+  log('  ollama launch claude --model qwen3.5');
+  log('  ollama launch codex --model gemma4');
 }
 
 main().catch((e) => {
