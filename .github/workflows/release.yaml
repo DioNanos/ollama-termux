@@ -74,22 +74,33 @@ jobs:
             vulkan-headers shaderc libvulkan-dev
           glslc --version
 
-      - name: Locate vulkan.hpp
+      - name: Stage isolated vulkan headers
         run: |
           set -euo pipefail
-          HPP="$(dpkg -L vulkan-headers libvulkan-dev 2>/dev/null \
-            | grep -E '/vulkan\.hpp$' | head -1 || true)"
-          if [ -z "$HPP" ]; then
+          # Isolate the host vulkan/*.h* tree in a dedicated dir so we can
+          # pass it to the NDK cross-compile via -isystem without leaking
+          # unrelated glibc headers from /usr/include.
+          SRC_DIR="$(dpkg -L vulkan-headers libvulkan-dev 2>/dev/null \
+            | grep -E '/include/vulkan/vulkan\.hpp$' \
+            | head -1 | xargs -I{} dirname {} | xargs -I{} dirname {} || true)"
+          if [ -z "$SRC_DIR" ]; then
             HPP="$(find /usr /opt -name vulkan.hpp 2>/dev/null | head -1 || true)"
+            SRC_DIR="$(dirname "$(dirname "$HPP")")"
           fi
-          if [ -z "$HPP" ]; then
+          if [ -z "$SRC_DIR" ] || [ ! -f "$SRC_DIR/vulkan/vulkan.hpp" ]; then
             echo "ERROR: vulkan.hpp not found after vulkan-headers install" >&2
             exit 1
           fi
-          INCLUDE_DIR="$(dirname "$(dirname "$HPP")")"
-          echo "Found vulkan.hpp at: $HPP"
-          echo "Include dir: $INCLUDE_DIR"
-          echo "VULKAN_HOST_INCLUDE=$INCLUDE_DIR" >> "$GITHUB_ENV"
+          STAGED="$RUNNER_TEMP/vulkan-headers"
+          mkdir -p "$STAGED"
+          cp -r "$SRC_DIR/vulkan" "$STAGED/"
+          # vk_video/ is referenced by the recent vulkan.hpp.
+          if [ -d "$SRC_DIR/vk_video" ]; then
+            cp -r "$SRC_DIR/vk_video" "$STAGED/"
+          fi
+          echo "Staged vulkan headers at: $STAGED"
+          ls "$STAGED"
+          echo "VULKAN_HOST_INCLUDE=$STAGED" >> "$GITHUB_ENV"
 
       - name: Validate tag matches package version
         run: |
