@@ -145,6 +145,16 @@ if [ "$BUILD_VULKAN" = "1" ]; then
     vulkan_dir="$BUILD_DIR/ggml-vulkan"
     echo "--- Building ggml-vulkan (Android loader, runtime LD_LIBRARY_PATH=/system/lib64) ---"
 
+    # The NDK sysroot ships vulkan/vulkan.h (C) but not vulkan.hpp (C++).
+    # ggml-vulkan.cpp needs the C++ wrapper, so point find_package(Vulkan)
+    # at the host vulkan-headers package (installed via apt / LunarG SDK).
+    VULKAN_HOST_INCLUDE="${VULKAN_HOST_INCLUDE:-/usr/include}"
+    if [ ! -f "$VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp" ]; then
+        echo "ERROR: vulkan.hpp not found at $VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp"
+        echo "       install vulkan-headers (apt install vulkan-headers, or LunarG SDK)"
+        exit 1
+    fi
+
     cmake -S "$ROOT_DIR" -B "$vulkan_dir" \
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
         -DANDROID_ABI=arm64-v8a \
@@ -160,6 +170,7 @@ if [ "$BUILD_VULKAN" = "1" ]; then
         -DGGML_CUDA=OFF \
         -DGGML_HIP=OFF \
         -DMLX_ENGINE=OFF \
+        -DVulkan_INCLUDE_DIR="$VULKAN_HOST_INCLUDE" \
         -GNinja
 
     ninja -C "$vulkan_dir" ggml-vulkan
