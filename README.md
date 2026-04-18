@@ -38,7 +38,16 @@ behavior.
 - This is **not** a minimal patch port like `codex-termux`
 - This is **not** a drop-in replacement for upstream Ollama on desktop/server
   systems
-- This does **not** add GPU inference today
+
+### Experimental
+
+- **Vulkan on Termux** (opt-in): the runner can route `dlopen("libvulkan.so")`
+  through the Android system loader (`/system/lib64`), which has namespace
+  access to the vendor GPU ICD at `/vendor/lib64/hw/vulkan.*.so` that Termux
+  processes are normally blocked from. Verified on Pixel 9 Pro / Mali-G715.
+  Build with `BUILD_VULKAN=1 ./scripts/build_termux.sh`, enable at runtime
+  with `OLLAMA_VULKAN=1`. See
+  [docs/VULKAN_ANDROID_LOADER.md](./docs/VULKAN_ANDROID_LOADER.md).
 
 ---
 
@@ -53,6 +62,8 @@ The current fork-only behavior is intentional and user-visible:
 - Big-core detection via `/sys/devices/system/cpu/.../cpufreq`
 - Context ladder capped for mobile RAM tiers
 - Flash attention enabled automatically on CPU-only mobile targets
+- Runner prepends `/system/lib64` to `LD_LIBRARY_PATH` so an optional
+  `ggml-vulkan` backend can reach the Android vendor GPU driver
 
 These are fork behaviors, not upstream behaviors.
 
@@ -183,6 +194,13 @@ The shipped CPU backends target:
 - `armv8.0` fallback
 - `armv8.2 + dotprod + fp16`
 - `armv8.6 + dotprod + fp16 + i8mm + sve2`
+
+An optional `ggml-vulkan` backend is produced when the release is built with
+`BUILD_VULKAN=1`. At runtime the fork prepends `/system/lib64` to
+`LD_LIBRARY_PATH` so the Android system Vulkan loader is used; that loader
+has access to the vendor GPU driver that Termux processes cannot reach
+directly (`/vendor/lib64/hw/vulkan.mali.so` on Tensor, `vulkan.adreno.so` on
+Qualcomm). Runtime gate: `OLLAMA_VULKAN=1`.
 
 Backend selection is done at runtime by the ggml layer.
 
