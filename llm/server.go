@@ -417,6 +417,15 @@ func StartRunner(ollamaEngine bool, modelPath string, gpuLibs []string, out io.W
 		libraryPaths = append(libraryPaths, filepath.SplitList(libraryPath)...)
 	}
 
+	// Termux: the Android system Vulkan loader at /system/lib64 runs under a
+	// linker namespace that has access to the vendor GPU driver at
+	// /vendor/lib64/hw/vulkan.*.so. The Termux loader cannot reach that path.
+	// Prepending /system/lib64 lets dlopen("libvulkan.so") from ggml-vulkan
+	// resolve to the Android loader and pick up the real GPU ICD.
+	if isTermux() {
+		libraryPaths = append([]string{"/system/lib64"}, libraryPaths...)
+	}
+
 	cmd = exec.Command(exe, params...)
 
 	cmd.Env = os.Environ()

@@ -84,6 +84,18 @@ GGML_VARIANTS=(
     "armv8.6:armv8.6-a+dotprod+fp16+i8mm+sve2"
 )
 
+# BUILD_VULKAN=1 adds the Vulkan backend alongside the CPU variants.
+# Requires glslc in PATH (vulkan-sdk or shaderc on the build host).
+# Linked against the NDK Vulkan stub; at runtime the Termux build sets
+# LD_LIBRARY_PATH to /system/lib64 so ggml-vulkan resolves the Android
+# system loader and reaches the vendor GPU ICD.
+BUILD_VULKAN="${BUILD_VULKAN:-0}"
+if [ "$BUILD_VULKAN" = "1" ] && ! command -v glslc >/dev/null 2>&1; then
+    echo "ERROR: BUILD_VULKAN=1 but glslc not found in PATH"
+    echo "       install vulkan-sdk or shaderc on the build host"
+    exit 1
+fi
+
 for variant in "${GGML_VARIANTS[@]}"; do
     IFS=':' read -r name march <<< "$variant"
     variant_dir="$BUILD_DIR/ggml-$name"
@@ -126,6 +138,46 @@ for variant in "${GGML_VARIANTS[@]}"; do
     fi
     echo ""
 done
+
+# --- Step 1b: Optional Vulkan backend ---
+
+if [ "$BUILD_VULKAN" = "1" ]; then
+    vulkan_dir="$BUILD_DIR/ggml-vulkan"
+    echo "--- Building ggml-vulkan (Android loader, runtime LD_LIBRARY_PATH=/system/lib64) ---"
+
+    cmake -S "$ROOT_DIR" -B "$vulkan_dir" \
+        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+        -DANDROID_ABI=arm64-v8a \
+        -DANDROID_PLATFORM=android-28 \
+        -DANDROID_ARM_NEON=ON \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
+        -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
+        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+        -DGGML_VULKAN=ON \
+        -DGGML_VULKAN_CHECK_RESULTS=OFF \
+        -DGGML_VULKAN_DEBUG=OFF \
+        -DGGML_CUDA=OFF \
+        -DGGML_HIP=OFF \
+        -DMLX_ENGINE=OFF \
+        -GNinja
+
+    ninja -C "$vulkan_dir" ggml-vulkan
+
+    lib_dir="$vulkan_dir/lib/ollama"
+    if [ -d "$lib_dir" ]; then
+        mkdir -p "$DIST_DIR/lib/ollama/vulkan"
+        for so in "$lib_dir"/libggml-vulkan*.so "$lib_dir"/libggml-base*.so; do
+            if [ -f "$so" ]; then
+                cp "$so" "$DIST_DIR/lib/ollama/vulkan/"
+                echo "  Copied: $(basename "$so")"
+            fi
+        done
+    else
+        echo "  WARNING: lib/ollama not found in $vulkan_dir"
+    fi
+    echo ""
+fi
 
 # --- Step 2: Cross-compile Go binary ---
 
