@@ -155,6 +155,9 @@ if [ "$BUILD_VULKAN" = "1" ]; then
         exit 1
     fi
 
+    # -isystem in CXX flags injects the host vulkan-headers path ahead of
+    # the NDK sysroot so ggml-vulkan.cpp's #include <vulkan/vulkan.hpp>
+    # resolves against the C++ wrapper that the NDK sysroot does not ship.
     cmake -S "$ROOT_DIR" -B "$vulkan_dir" \
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
         -DANDROID_ABI=arm64-v8a \
@@ -162,7 +165,7 @@ if [ "$BUILD_VULKAN" = "1" ]; then
         -DANDROID_ARM_NEON=ON \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
-        -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
+        -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3 -isystem $VULKAN_HOST_INCLUDE" \
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
         -DGGML_VULKAN=ON \
         -DGGML_VULKAN_CHECK_RESULTS=OFF \
