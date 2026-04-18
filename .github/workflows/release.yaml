@@ -56,7 +56,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build unzip file curl
+            cmake ninja-build unzip file curl glslang-tools
+
+      - name: Install Vulkan shader compiler (glslc)
+        run: |
+          set -euo pipefail
+          # shaderc ships glslc. Pull a recent toolchain from LunarG's apt
+          # repo matching the runner's Ubuntu codename so ggml-vulkan's
+          # shader build can resolve modern GLSL extensions.
+          CODENAME="$(lsb_release -cs)"
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc >/dev/null
+          sudo wget -qO "/etc/apt/sources.list.d/lunarg-vulkan-${CODENAME}.list" \
+            "https://packages.lunarg.com/vulkan/lunarg-vulkan-${CODENAME}.list"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            vulkan-headers shaderc
+          glslc --version
 
       - name: Validate tag matches package version
         run: |
@@ -86,6 +102,7 @@ jobs:
       - name: Build Android release assets
         env:
           NDK_ROOT: ${{ env.NDK_DIR }}
+          BUILD_VULKAN: "1"
         run: ./scripts/build_termux.sh
 
       - name: Verify release assets
