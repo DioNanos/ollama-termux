@@ -105,6 +105,47 @@ func TestClaudeFindPath(t *testing.T) {
 			t.Errorf("findPath() = %q, want %q", got, packageCLI)
 		}
 	})
+
+	t.Run("prefers Termux package cli.js over legacy fallback", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		homeDir := t.TempDir()
+		setTestHome(t, homeDir)
+		nodeDir := t.TempDir()
+		nodePath := filepath.Join(nodeDir, "node")
+		if err := os.WriteFile(nodePath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", nodeDir)
+		t.Setenv("PREFIX", tmpDir)
+
+		name := "claude"
+		if runtime.GOOS == "windows" {
+			name = "claude.exe"
+		}
+		fallback := filepath.Join(homeDir, ".claude", "local", name)
+		if err := os.MkdirAll(filepath.Dir(fallback), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fallback, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		packageCLI := filepath.Join(tmpDir, "lib", "node_modules", "@anthropic-ai", "claude-code", "cli.js")
+		if err := os.MkdirAll(filepath.Dir(packageCLI), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(packageCLI, []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := c.findPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != packageCLI {
+			t.Errorf("findPath() = %q, want %q", got, packageCLI)
+		}
+	})
 }
 
 func TestClaudeArgs(t *testing.T) {

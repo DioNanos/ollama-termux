@@ -36,7 +36,7 @@ func (c *Claude) findPath() (string, error) {
 	}
 	fallback := filepath.Join(home, ".claude", "local", name)
 	termuxPackageCLI := termuxPackageEntrypoint("@anthropic-ai/claude-code", "cli.js")
-	return findCommandPath("claude", fallback, termuxPackageCLI)
+	return findCommandPath("claude", termuxPackageCLI, fallback)
 }
 
 func (c *Claude) findCommand() (resolvedCommand, error) {
@@ -50,7 +50,7 @@ func (c *Claude) findCommand() (resolvedCommand, error) {
 	}
 	fallback := filepath.Join(home, ".claude", "local", name)
 	termuxPackageCLI := termuxPackageEntrypoint("@anthropic-ai/claude-code", "cli.js")
-	return resolveCommand("claude", fallback, termuxPackageCLI)
+	return resolveCommand("claude", termuxPackageCLI, fallback)
 }
 
 func (c *Claude) Run(model string, args []string) error {
