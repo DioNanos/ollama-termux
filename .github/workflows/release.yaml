@@ -71,8 +71,25 @@ jobs:
             "https://packages.lunarg.com/vulkan/lunarg-vulkan-${CODENAME}.list"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            vulkan-headers shaderc
+            vulkan-headers shaderc libvulkan-dev
           glslc --version
+
+      - name: Locate vulkan.hpp
+        run: |
+          set -euo pipefail
+          HPP="$(dpkg -L vulkan-headers libvulkan-dev 2>/dev/null \
+            | grep -E '/vulkan\.hpp$' | head -1 || true)"
+          if [ -z "$HPP" ]; then
+            HPP="$(find /usr /opt -name vulkan.hpp 2>/dev/null | head -1 || true)"
+          fi
+          if [ -z "$HPP" ]; then
+            echo "ERROR: vulkan.hpp not found after vulkan-headers install" >&2
+            exit 1
+          fi
+          INCLUDE_DIR="$(dirname "$(dirname "$HPP")")"
+          echo "Found vulkan.hpp at: $HPP"
+          echo "Include dir: $INCLUDE_DIR"
+          echo "VULKAN_HOST_INCLUDE=$INCLUDE_DIR" >> "$GITHUB_ENV"
 
       - name: Validate tag matches package version
         run: |
