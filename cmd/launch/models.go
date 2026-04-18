@@ -94,9 +94,9 @@ func OpenBrowser(url string) {
 	case "darwin":
 		_ = exec.Command("open", url).Start()
 	case "linux":
-		// Termux: prefer termux-open-url for Android
-		if _, err := exec.LookPath("termux-open-url"); err == nil {
-			_ = exec.Command("termux-open-url", url).Start()
+		// Termux: prefer termux-open-url for Android, even if PATH is incomplete.
+		if cmd, err := termuxOpenURLCommand(url); err == nil {
+			_ = cmd.Run()
 			return
 		}
 		// Standard Linux

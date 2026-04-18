@@ -3,7 +3,6 @@ package launch
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -28,7 +27,12 @@ func (c *Codex) args(model string, extra []string) []string {
 }
 
 func (c *Codex) Run(model string, args []string) error {
-	if err := checkCodexVersion(); err != nil {
+	codex, err := c.findCommand()
+	if err != nil {
+		return fmt.Errorf("codex is not installed\n\nInstall with:\n  npm install -g @mmmbuto/codex-cli-termux  (recommended on Termux)\n  or\n  npm install -g @openai/codex")
+	}
+
+	if err := checkCodexVersion(codex); err != nil {
 		return err
 	}
 
@@ -36,7 +40,7 @@ func (c *Codex) Run(model string, args []string) error {
 		return fmt.Errorf("failed to configure codex: %w", err)
 	}
 
-	cmd := exec.Command("codex", c.args(model, args)...)
+	cmd := codex.Command(c.args(model, args)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -44,6 +48,11 @@ func (c *Codex) Run(model string, args []string) error {
 		"OPENAI_API_KEY=ollama",
 	)
 	return cmd.Run()
+}
+
+func (c *Codex) findCommand() (resolvedCommand, error) {
+	termuxPackageCLI := termuxPackageEntrypoint("@mmmbuto/codex-cli-termux", "bin/codex.js")
+	return resolveCommand("codex", termuxPackageCLI)
 }
 
 // ensureCodexConfig writes a [profiles.ollama-launch] section to ~/.codex/config.toml
@@ -121,12 +130,8 @@ func writeCodexProfile(configPath string) error {
 	return os.WriteFile(configPath, []byte(text), 0o644)
 }
 
-func checkCodexVersion() error {
-	if _, err := exec.LookPath("codex"); err != nil {
-		return fmt.Errorf("codex is not installed\n\nInstall with:\n  npm install -g @mmmbuto/codex-cli-termux  (recommended on Termux)\n  or\n  npm install -g @openai/codex")
-	}
-
-	out, err := exec.Command("codex", "--version").Output()
+func checkCodexVersion(codex resolvedCommand) error {
+	out, err := codex.Command("--version").Output()
 	if err != nil {
 		return fmt.Errorf("failed to get codex version: %w", err)
 	}

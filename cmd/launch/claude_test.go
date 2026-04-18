@@ -77,6 +77,34 @@ func TestClaudeFindPath(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 	})
+
+	t.Run("falls back to Termux package cli.js", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		setTestHome(t, t.TempDir())
+		nodeDir := t.TempDir()
+		nodePath := filepath.Join(nodeDir, "node")
+		if err := os.WriteFile(nodePath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", nodeDir)
+		t.Setenv("PREFIX", tmpDir)
+
+		packageCLI := filepath.Join(tmpDir, "lib", "node_modules", "@anthropic-ai", "claude-code", "cli.js")
+		if err := os.MkdirAll(filepath.Dir(packageCLI), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(packageCLI, []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := c.findPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != packageCLI {
+			t.Errorf("findPath() = %q, want %q", got, packageCLI)
+		}
+	})
 }
 
 func TestClaudeArgs(t *testing.T) {

@@ -3,7 +3,6 @@ package launch
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"slices"
 	"strings"
 )
@@ -54,7 +53,7 @@ var integrationSpecs = []*IntegrationSpec{
 		Description: "OpenAI's open-source coding agent",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
-				_, err := exec.LookPath("codex")
+				_, err := (&Codex{}).findCommand()
 				return err == nil
 			},
 			URL:     "https://developers.openai.com/codex/cli/",

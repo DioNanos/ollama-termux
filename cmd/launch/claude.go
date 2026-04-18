@@ -3,7 +3,6 @@ package launch
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -27,9 +26,6 @@ func (c *Claude) args(model string, extra []string) []string {
 }
 
 func (c *Claude) findPath() (string, error) {
-	if p, err := exec.LookPath("claude"); err == nil {
-		return p, nil
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -39,19 +35,31 @@ func (c *Claude) findPath() (string, error) {
 		name = "claude.exe"
 	}
 	fallback := filepath.Join(home, ".claude", "local", name)
-	if _, err := os.Stat(fallback); err != nil {
-		return "", err
+	termuxPackageCLI := termuxPackageEntrypoint("@anthropic-ai/claude-code", "cli.js")
+	return findCommandPath("claude", fallback, termuxPackageCLI)
+}
+
+func (c *Claude) findCommand() (resolvedCommand, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return resolvedCommand{}, err
 	}
-	return fallback, nil
+	name := "claude"
+	if runtime.GOOS == "windows" {
+		name = "claude.exe"
+	}
+	fallback := filepath.Join(home, ".claude", "local", name)
+	termuxPackageCLI := termuxPackageEntrypoint("@anthropic-ai/claude-code", "cli.js")
+	return resolveCommand("claude", fallback, termuxPackageCLI)
 }
 
 func (c *Claude) Run(model string, args []string) error {
-	claudePath, err := c.findPath()
+	claude, err := c.findCommand()
 	if err != nil {
-		return fmt.Errorf("claude is not installed, install from https://code.claude.com/docs/en/quickstart")
+		return fmt.Errorf("claude is not installed\n\nOn Termux install:\n  npm install -g @anthropic-ai/claude-code@2.1.112\n\nNote: @anthropic-ai/claude-code 2.1.113 and newer no longer ship native Termux support")
 	}
 
-	cmd := exec.Command(claudePath, c.args(model, args)...)
+	cmd := claude.Command(c.args(model, args)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -91,11 +91,20 @@ SHA256 checksum when available, and installs:
 
 ```bash
 # Claude Code
-npm install -g @anthropic-ai/claude-code
+npm install -g @anthropic-ai/claude-code@2.1.112
 
 # Codex Termux fork
 npm install -g @mmmbuto/codex-cli-termux
 ```
+
+Important:
+
+- `@anthropic-ai/claude-code@2.1.112` is the last known version still installable and usable on native Termux
+- starting with `@anthropic-ai/claude-code@2.1.113`, Anthropic no longer ships native Termux support
+- `ollama-termux` therefore targets the Termux package path for Claude at:
+  `/data/data/com.termux/files/usr/lib/node_modules/@anthropic-ai/claude-code`
+- `ollama-termux` targets the Termux package path for Codex at:
+  `/data/data/com.termux/files/usr/lib/node_modules/@mmmbuto/codex-cli-termux`
 
 ### 3. Verify
 

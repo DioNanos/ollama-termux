@@ -33,6 +33,59 @@ func TestCodexArgs(t *testing.T) {
 	}
 }
 
+func TestCheckCodexVersionSupportsTermuxNodeShim(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	nodePath := filepath.Join(tmpDir, "node")
+	nodeScript := "#!/bin/sh\nif [ \"$2\" = \"--version\" ]; then\n  echo 'codex-cli 0.120.0-termux'\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(nodePath, []byte(nodeScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	codexPath := filepath.Join(tmpDir, "codex")
+	if err := os.WriteFile(codexPath, []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", tmpDir)
+
+	spec, err := (&Codex{}).findCommand()
+	if err != nil {
+		t.Fatalf("findCommand() error = %v", err)
+	}
+
+	if err := checkCodexVersion(spec); err != nil {
+		t.Fatalf("checkCodexVersion() error = %v", err)
+	}
+}
+
+func TestCodexFindCommandFallsBackToTermuxPackageEntrypoint(t *testing.T) {
+	tmpDir := t.TempDir()
+	packageCLI := filepath.Join(tmpDir, "lib", "node_modules", "@mmmbuto", "codex-cli-termux", "bin", "codex.js")
+	if err := os.MkdirAll(filepath.Dir(packageCLI), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(packageCLI, []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	nodePath := filepath.Join(tmpDir, "node")
+	if err := os.WriteFile(nodePath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", tmpDir)
+	t.Setenv("PREFIX", tmpDir)
+
+	spec, err := (&Codex{}).findCommand()
+	if err != nil {
+		t.Fatalf("findCommand() error = %v", err)
+	}
+	if spec.Path != packageCLI {
+		t.Fatalf("Path = %q, want %q", spec.Path, packageCLI)
+	}
+}
+
 func TestWriteCodexProfile(t *testing.T) {
 	t.Run("creates new file when none exists", func(t *testing.T) {
 		tmpDir := t.TempDir()
