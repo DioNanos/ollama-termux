@@ -239,6 +239,10 @@ mkdir -p "$STAGING/bin" "$STAGING/lib/ollama"
 cp "$DIST_DIR/bin/ollama" "$STAGING/bin/"
 if [ -d "$DIST_DIR/lib/ollama" ]; then
     cp "$DIST_DIR/lib/ollama/"*.so "$STAGING/lib/ollama/" 2>/dev/null || true
+    # Vulkan backend lands in a subdirectory; flatten into lib/ollama/.
+    if [ -d "$DIST_DIR/lib/ollama/vulkan" ]; then
+        cp "$DIST_DIR/lib/ollama/vulkan/"*.so "$STAGING/lib/ollama/" 2>/dev/null || true
+    fi
 fi
 
 # Add install helper
