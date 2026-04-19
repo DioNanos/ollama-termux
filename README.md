@@ -26,7 +26,8 @@ behavior.
 ### What This Fork Changes
 
 - Keeps only the launcher integrations we actually support on Termux:
-  **Claude Code** and **Codex**
+  **Codex** (primary), **Qwen Code** (secondary), and **Claude Code**
+  (frozen @2.1.112)
 - Uses `termux-open-url` when browser/OAuth flows need to open URLs on Android
 - Tunes CPU thread selection, memory heuristics, flash attention defaults, and
   context limits for modern phones
@@ -60,9 +61,12 @@ behavior.
 
 The current fork-only behavior is intentional and user-visible:
 
-- Launcher integrations restricted to Claude Code + Codex
-- Claude launched with `--dangerously-skip-permissions`
+- Launcher integrations: Codex (primary), Qwen Code (secondary),
+  Claude Code (frozen @2.1.112)
 - Codex launched with `--dangerously-bypass-approvals-and-sandbox`
+- Qwen launched with `--approval-mode yolo` and routed through the
+  local Ollama OpenAI-compat `/v1` endpoint
+- Claude launched with `--dangerously-skip-permissions`
 - Android-aware memory heuristic based on `MemTotal`
 - Big-core detection via `/sys/devices/system/cpu/.../cpufreq`
 - Context ladder capped for mobile RAM tiers
