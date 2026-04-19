@@ -27,7 +27,7 @@ var LibOllamaPath string = func() string {
 	switch runtime.GOOS {
 	case "windows":
 		libPath = filepath.Join(filepath.Dir(exe), "lib", "ollama")
-	case "linux":
+	case "linux", "android":
 		libPath = filepath.Join(filepath.Dir(exe), "..", "lib", "ollama")
 	case "darwin":
 		libPath = filepath.Dir(exe)

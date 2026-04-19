@@ -181,7 +181,11 @@ if(CMAKE_HIP_COMPILER)
     endif()
 endif()
 
-if(NOT APPLE)
+if(NOT APPLE AND NOT CMAKE_CROSSCOMPILING)
+    # Desktop/host Vulkan packaging. Cross builds (e.g. Android) rely on the
+    # ggml backend registration below (GGML_VULKAN=ON in ggml/src) and copy
+    # the resulting shared library manually — install(TARGETS ...
+    # RUNTIME_DEPENDENCIES ...) is not supported when cross-compiling.
     find_package(Vulkan)
     if(Vulkan_FOUND)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ml/backend/ggml/ggml/src/ggml-vulkan)

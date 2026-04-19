@@ -417,9 +417,38 @@ func StartRunner(ollamaEngine bool, modelPath string, gpuLibs []string, out io.W
 		libraryPaths = append(libraryPaths, filepath.SplitList(libraryPath)...)
 	}
 
+	// Termux: the Android system Vulkan loader at /system/lib64 runs under a
+	// linker namespace that has access to the vendor GPU driver at
+	// /vendor/lib64/hw/vulkan.*.so. The Termux loader cannot reach that path.
+	// Prepending /system/lib64 lets dlopen("libvulkan.so") from ggml-vulkan
+	// resolve to the Android loader and pick up the real GPU ICD.
+	if isTermux() {
+		libraryPaths = append([]string{"/system/lib64"}, libraryPaths...)
+	}
+
 	cmd = exec.Command(exe, params...)
 
 	cmd.Env = os.Environ()
+
+	// Termux: the Go binary is linked against the NDK libc++ which lives in
+	// /data/data/com.termux/files/usr/lib. The runner subprocess needs
+	// LD_LIBRARY_PATH to find libc++_shared.so and, when Vulkan is enabled,
+	// the Android system Vulkan loader at /system/lib64.
+	if isTermux() {
+		termuxLD := "/data/data/com.termux/files/usr/lib:/system/lib64"
+		if existing := os.Getenv("LD_LIBRARY_PATH"); existing != "" {
+			termuxLD = termuxLD + ":" + existing
+		}
+		// Replace, don't append — os.Environ() may already contain LD_LIBRARY_PATH.
+		filtered := make([]string, 0, len(cmd.Env))
+		for _, e := range cmd.Env {
+			if !strings.HasPrefix(e, "LD_LIBRARY_PATH=") {
+				filtered = append(filtered, e)
+			}
+		}
+		filtered = append(filtered, "LD_LIBRARY_PATH="+termuxLD)
+		cmd.Env = filtered
+	}
 
 	if out != nil {
 		stdout, err := cmd.StdoutPipe()
