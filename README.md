@@ -105,22 +105,34 @@ SHA256 checksum when available, and installs:
 
 ### 2. Install supported coding CLIs
 
-```bash
-# Claude Code
-npm install -g @anthropic-ai/claude-code@2.1.112
+Launcher priority on Termux is **Codex (primary) → Qwen (secondary) → Claude (frozen)**.
 
-# Codex Termux fork
+```bash
+# Codex — primary (our Termux fork)
 npm install -g @mmmbuto/codex-cli-termux
+
+# Qwen Code — secondary (our Termux fork)
+npm install -g @mmmbuto/qwen-code-termux
+
+# Claude Code — frozen at 2.1.112 (Anthropic dropped Termux after)
+npm install -g @anthropic-ai/claude-code@2.1.112
 ```
 
 Important:
 
-- `@anthropic-ai/claude-code@2.1.112` is the last known version still installable and usable on native Termux
-- starting with `@anthropic-ai/claude-code@2.1.113`, Anthropic no longer ships native Termux support
-- `ollama-termux` therefore targets the Termux package path for Claude at:
-  `/data/data/com.termux/files/usr/lib/node_modules/@anthropic-ai/claude-code`
-- `ollama-termux` targets the Termux package path for Codex at:
-  `/data/data/com.termux/files/usr/lib/node_modules/@mmmbuto/codex-cli-termux`
+- **Codex** is the recommended coding agent on Termux. Fork ships
+  Android-tuned runtime and is published at `@mmmbuto/codex-cli-termux`.
+- **Qwen Code** is the secondary agent, also a Termux-native fork
+  (`@mmmbuto/qwen-code-termux`). Routes through Ollama via the
+  OpenAI-compatible endpoint.
+- **Claude Code** is **frozen** at `2.1.112` — the last version that
+  still ships native Termux support. `@anthropic-ai/claude-code@2.1.113`
+  and newer no longer work on Termux. We keep Claude in the launcher
+  for users already on the frozen pin; do not upgrade.
+- `ollama-termux` targets these Termux package paths:
+  - Codex:  `/data/data/com.termux/files/usr/lib/node_modules/@mmmbuto/codex-cli-termux`
+  - Qwen:   `/data/data/com.termux/files/usr/lib/node_modules/@mmmbuto/qwen-code-termux`
+  - Claude: `/data/data/com.termux/files/usr/lib/node_modules/@anthropic-ai/claude-code`
 
 ### 3. Verify
 
@@ -147,11 +159,14 @@ ollama serve &
 ollama pull qwen3.5:4b
 ollama pull gemma4:e4b
 
-# Launch Claude Code through Ollama with qwen3.5:4b
-ollama launch claude --model qwen3.5:4b
-
-# Launch Codex through Ollama with gemma4:e4b
+# Launch Codex (primary) through Ollama with gemma4:e4b
 ollama launch codex --model gemma4:e4b
+
+# Launch Qwen Code (secondary) through Ollama with gemma4:e2b
+ollama launch qwen --model gemma4:e2b
+
+# Launch Claude Code (frozen @2.1.112) through Ollama with qwen3.5:4b
+ollama launch claude --model qwen3.5:4b
 ```
 
 ---
