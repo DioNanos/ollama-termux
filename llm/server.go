@@ -439,7 +439,15 @@ func StartRunner(ollamaEngine bool, modelPath string, gpuLibs []string, out io.W
 		if existing := os.Getenv("LD_LIBRARY_PATH"); existing != "" {
 			termuxLD = termuxLD + ":" + existing
 		}
-		cmd.Env = append(cmd.Env, "LD_LIBRARY_PATH="+termuxLD)
+		// Replace, don't append — os.Environ() may already contain LD_LIBRARY_PATH.
+		filtered := make([]string, 0, len(cmd.Env))
+		for _, e := range cmd.Env {
+			if !strings.HasPrefix(e, "LD_LIBRARY_PATH=") {
+				filtered = append(filtered, e)
+			}
+		}
+		filtered = append(filtered, "LD_LIBRARY_PATH="+termuxLD)
+		cmd.Env = filtered
 	}
 
 	if out != nil {
