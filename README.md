@@ -228,16 +228,22 @@ Backend selection is done at runtime by the ggml layer.
 
 ## Validation Status
 
-Packaging checks completed in this repo before publish prep:
+Current release: **`v0.21.0-termux.16`** on npm (`latest`) and GitHub Releases.
 
-- `node -c install.js`
-- `npm pack --dry-run`
-- release asset naming aligned with installer and build script
+On-device validation on Pixel 9 Pro (Tensor G4 / Mali-G715):
 
-Still required before public publish:
+- ✅ CPU inference across `armv8.0/8.2/8.6` backends
+- ✅ Vulkan GPU offload — 100% layer offload on `gemma4:e2b`, `gemma4:e4b`,
+  `medgemma:latest` (see [docs/BENCHMARKS.md](./docs/BENCHMARKS.md))
+- ✅ Codex launcher (`@mmmbuto/codex-cli-termux`) via OpenAI-compat `/v1`
+- ✅ Qwen Code launcher (`@mmmbuto/qwen-code-termux`) via OpenAI-compat `/v1`
+- ✅ Claude Code launcher (`@anthropic-ai/claude-code@2.1.112`, frozen)
 
-- GitHub Release asset generation for the tagged version
-- Termux device install verification against the released asset
+CI release pipeline (`release-termux` + `npm-publish`) produces and publishes:
+
+- `ollama-termux-<version>-android-arm64.tar.gz`
+- `ollama-termux-<version>-android-arm64.tar.gz.sha256`
+- npm tarball with `install.js` and doc set
 
 ---
 
