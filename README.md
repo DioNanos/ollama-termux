@@ -47,7 +47,12 @@ behavior.
   processes are normally blocked from. Verified on Pixel 9 Pro / Mali-G715.
   Build with `BUILD_VULKAN=1 ./scripts/build_termux.sh`, enable at runtime
   with `OLLAMA_VULKAN=1`. See
-  [docs/VULKAN_ANDROID_LOADER.md](./docs/VULKAN_ANDROID_LOADER.md).
+  [docs/VULKAN_ANDROID_LOADER.md](./docs/VULKAN_ANDROID_LOADER.md) for the
+  loader mechanism, and [docs/BENCHMARKS.md](./docs/BENCHMARKS.md) for
+  CPU-vs-Vulkan throughput on Pixel 9 Pro. Highlights on Mali-G715:
+  `gemma4:e2b` 2.44 → **7.37 tok/s** (3.0×), `gemma4:e4b` 1.81 →
+  **4.45 tok/s** (2.5×), `medgemma:latest` 2.43 → **3.96 tok/s** (1.6×).
+  All models reach 100% layer offload.
 
 ---
 
