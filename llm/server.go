@@ -430,6 +430,18 @@ func StartRunner(ollamaEngine bool, modelPath string, gpuLibs []string, out io.W
 
 	cmd.Env = os.Environ()
 
+	// Termux: the Go binary is linked against the NDK libc++ which lives in
+	// /data/data/com.termux/files/usr/lib. The runner subprocess needs
+	// LD_LIBRARY_PATH to find libc++_shared.so and, when Vulkan is enabled,
+	// the Android system Vulkan loader at /system/lib64.
+	if isTermux() {
+		termuxLD := "/data/data/com.termux/files/usr/lib:/system/lib64"
+		if existing := os.Getenv("LD_LIBRARY_PATH"); existing != "" {
+			termuxLD = termuxLD + ":" + existing
+		}
+		cmd.Env = append(cmd.Env, "LD_LIBRARY_PATH="+termuxLD)
+	}
+
 	if out != nil {
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
