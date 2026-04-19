@@ -32,25 +32,13 @@ type IntegrationInfo struct {
 	Description string
 }
 
-var launcherIntegrationOrder = []string{"claude", "codex"}
+var launcherIntegrationOrder = []string{"codex", "qwen", "claude"}
 
 var integrationSpecs = []*IntegrationSpec{
 	{
-		Name:        "claude",
-		Runner:      &Claude{},
-		Description: "Anthropic's coding tool with subagents",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, err := (&Claude{}).findPath()
-				return err == nil
-			},
-			URL: "https://code.claude.com/docs/en/quickstart",
-		},
-	},
-	{
 		Name:        "codex",
 		Runner:      &Codex{},
-		Description: "OpenAI's open-source coding agent",
+		Description: "OpenAI's open-source coding agent (primary)",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
 				_, err := (&Codex{}).findCommand()
@@ -58,6 +46,31 @@ var integrationSpecs = []*IntegrationSpec{
 			},
 			URL:     "https://developers.openai.com/codex/cli/",
 			Command: []string{"npm", "install", "-g", "@mmmbuto/codex-cli-termux"},
+		},
+	},
+	{
+		Name:        "qwen",
+		Runner:      &Qwen{},
+		Description: "Qwen Code — OpenAI-compat coding agent (secondary)",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := (&Qwen{}).findCommand()
+				return err == nil
+			},
+			URL:     "https://www.npmjs.com/package/@mmmbuto/qwen-code-termux",
+			Command: []string{"npm", "install", "-g", "@mmmbuto/qwen-code-termux"},
+		},
+	},
+	{
+		Name:        "claude",
+		Runner:      &Claude{},
+		Description: "Anthropic Claude Code (frozen @2.1.112 — Termux dropped upstream)",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := (&Claude{}).findPath()
+				return err == nil
+			},
+			URL: "https://code.claude.com/docs/en/quickstart",
 		},
 	},
 }
