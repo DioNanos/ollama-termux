@@ -157,11 +157,11 @@ func TestClaudeArgs(t *testing.T) {
 		args  []string
 		want  []string
 	}{
-		{"with model", "llama3.2", nil, []string{"--model", "llama3.2"}},
-		{"empty model", "", nil, nil},
-		{"with model and verbose", "llama3.2", []string{"--verbose"}, []string{"--model", "llama3.2", "--verbose"}},
-		{"empty model with help", "", []string{"--help"}, []string{"--help"}},
-		{"with allowed tools", "llama3.2", []string{"--allowedTools", "Read,Write,Bash"}, []string{"--model", "llama3.2", "--allowedTools", "Read,Write,Bash"}},
+		{"with model", "llama3.2", nil, []string{"--dangerously-skip-permissions", "--model", "llama3.2"}},
+		{"empty model", "", nil, []string{"--dangerously-skip-permissions"}},
+		{"with model and verbose", "llama3.2", []string{"--verbose"}, []string{"--dangerously-skip-permissions", "--model", "llama3.2", "--verbose"}},
+		{"empty model with help", "", []string{"--help"}, []string{"--dangerously-skip-permissions", "--help"}},
+		{"with allowed tools", "llama3.2", []string{"--allowedTools", "Read,Write,Bash"}, []string{"--dangerously-skip-permissions", "--model", "llama3.2", "--allowedTools", "Read,Write,Bash"}},
 	}
 
 	for _, tt := range tests {

@@ -187,6 +187,13 @@ type ModelItem struct {
 	Recommended bool
 }
 
+func launchCommandSupportedIntegrationsHelp() string {
+	return `Supported integrations:
+  codex     Codex (Termux fork)
+  qwen      Qwen Code (Termux fork)
+  claude    Claude Code (frozen @2.1.112)`
+}
+
 // LaunchCmd returns the cobra command for launching integrations.
 // The runTUI callback is called when the root launcher UI should be shown.
 func LaunchCmd(checkServerHeartbeat func(cmd *cobra.Command, args []string) error, runTUI func(cmd *cobra.Command)) *cobra.Command {
@@ -197,21 +204,19 @@ func LaunchCmd(checkServerHeartbeat func(cmd *cobra.Command, args []string) erro
 	cmd := &cobra.Command{
 		Use:   "launch [INTEGRATION] [-- [EXTRA_ARGS...]]",
 		Short: "Launch the Ollama menu or an integration",
-		Long: `Launch the Ollama interactive menu, or directly launch a specific integration.
+		Long: fmt.Sprintf(`Launch the Ollama interactive menu, or directly launch a specific integration.
 
 Without arguments, this is equivalent to running 'ollama' directly.
 Flags and extra arguments require an integration name.
 
-Supported integrations:
-  claude    Claude Code
-  codex     Codex
+%s
 
 Examples:
   ollama launch
   ollama launch claude
   ollama launch claude --model <model>
   ollama launch codex
-  ollama launch codex -- -p myprofile (pass extra args to integration)`,
+  ollama launch codex -- -p myprofile (pass extra args to integration)`, launchCommandSupportedIntegrationsHelp()),
 		Args:    cobra.ArbitraryArgs,
 		PreRunE: checkServerHeartbeat,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -577,7 +582,7 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 		return nil
 	}
 
-	if (current == "" || needsConfigure || req.ModelOverride != "" || target != current) && !savedMatchesModels(saved, []string{target}) {
+	if needsConfigure || req.ModelOverride != "" || (current != "" && target != current) || !savedMatchesModels(saved, []string{target}) {
 		if err := prepareManagedSingleIntegration(name, runner, managed, target); err != nil {
 			return err
 		}

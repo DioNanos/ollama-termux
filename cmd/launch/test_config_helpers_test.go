@@ -36,6 +36,23 @@ func buildTestIntegrationAliases() map[string]bool {
 	return result
 }
 
+func withTermuxRuntimeForTest(t *testing.T, enabled bool) {
+	t.Helper()
+
+	prevRuntime := isTermuxRuntime
+	prevOrder := integrationOrder
+	isTermuxRuntime = func() bool { return enabled }
+	if enabled {
+		integrationOrder = termuxLauncherIntegrationOrder
+	} else {
+		integrationOrder = launcherIntegrationOrder
+	}
+	t.Cleanup(func() {
+		isTermuxRuntime = prevRuntime
+		integrationOrder = prevOrder
+	})
+}
+
 func setTestHome(t *testing.T, dir string) {
 	t.Helper()
 	setLaunchTestHome(t, dir)

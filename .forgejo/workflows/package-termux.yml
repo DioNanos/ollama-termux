@@ -1,0 +1,68 @@
+name: Package Termux
+
+concurrency:
+  group: package-termux-mgm
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  android-arm64:
+    runs-on: mgm
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+      - name: Setup Node.js
+        uses: https://data.forgejo.org/actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Setup Go
+        uses: https://data.forgejo.org/actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo_cmd=""
+          if command -v sudo >/dev/null 2>&1; then
+            sudo_cmd="sudo"
+          fi
+          ${sudo_cmd} apt-get update
+          ${sudo_cmd} apt-get install -y --no-install-recommends curl unzip file ca-certificates
+      - name: Verify public release safety
+        run: bash .github/scripts/verify-public-release-safety.sh
+      - name: Download Android NDK
+        run: |
+          set -euo pipefail
+          NDK_VERSION=r27c
+          NDK_DIR="$GITHUB_WORKSPACE/android-ndk/android-ndk-r27c"
+          if [ ! -f "$NDK_DIR/build/cmake/android.toolchain.cmake" ]; then
+            mkdir -p "$(dirname "$NDK_DIR")"
+            curl -fsSL "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip" -o /tmp/android-ndk.zip
+            unzip -q /tmp/android-ndk.zip -d "$(dirname "$NDK_DIR")"
+          fi
+          echo "NDK_ROOT=$NDK_DIR" >> "$GITHUB_ENV"
+      - name: Build Android package with reused validated libs
+        run: |
+          set -euo pipefail
+          export TERMUX_REUSE_RELEASE_TAG="$(node -p "require('./package.json').termuxReuseReleaseTag")"
+          export NDK_ROOT="${NDK_ROOT}"
+          ./scripts/build_termux.sh
+      - name: Validate installer and npm package
+        run: |
+          set -euo pipefail
+          node -c install.js
+          npm pack --dry-run
+      - uses: https://data.forgejo.org/actions/upload-artifact@v3
+        with:
+          name: termux-android-arm64
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256

@@ -26,6 +26,8 @@ if [ -z "${VERSION:-}" ]; then
 fi
 BUILD_DIR="$ROOT_DIR/build/termux"
 DIST_DIR="$ROOT_DIR/dist/termux"
+TERMUX_REUSE_RELEASE_TAG="${TERMUX_REUSE_RELEASE_TAG:-}"
+TERMUX_REUSE_RELEASE_REPO="${TERMUX_REUSE_RELEASE_REPO:-DioNanos/ollama-termux}"
 
 : "${NDK_ROOT:?NDK_ROOT must point to Android NDK installation}"
 
@@ -76,7 +78,42 @@ exec "$CLANGXX" "\${args[@]}"
 EOF
 chmod +x "$LINKER_WRAPPER"
 
-# --- Step 1: Build ggml .so backends ---
+reuse_prebuilt_termux_libs() {
+    local tag="$1"
+    local repo="$2"
+    local version="${tag#v}"
+    local asset="ollama-termux-${version}-android-arm64.tar.gz"
+    local url="https://github.com/${repo}/releases/download/${tag}/${asset}"
+    local sha_url="${url}.sha256"
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    local archive_path="${tmp_dir}/${asset}"
+
+    echo "--- Reusing prebuilt Termux libs from ${repo}@${tag} ---"
+    curl -fsSL "$url" -o "$archive_path"
+
+    if curl -fsSL "$sha_url" -o "${archive_path}.sha256"; then
+        (
+            cd "$tmp_dir"
+            sha256sum -c "$(basename "${archive_path}.sha256")"
+        )
+    else
+        echo "WARNING: no SHA256 file available for ${asset}; continuing without checksum verification"
+    fi
+
+    tar -xzf "$archive_path" -C "$tmp_dir"
+    if [ ! -d "$tmp_dir/lib/ollama" ]; then
+        echo "ERROR: reused release ${tag} did not contain lib/ollama"
+        exit 1
+    fi
+
+    mkdir -p "$DIST_DIR/lib/ollama"
+    cp -R "$tmp_dir/lib/ollama/." "$DIST_DIR/lib/ollama/"
+    rm -rf "$tmp_dir"
+    echo ""
+}
+
+# --- Step 1: Build or reuse ggml .so backends ---
 
 GGML_VARIANTS=(
     "armv8.0:armv8-a"
@@ -90,107 +127,111 @@ GGML_VARIANTS=(
 # LD_LIBRARY_PATH to /system/lib64 so ggml-vulkan resolves the Android
 # system loader and reaches the vendor GPU ICD.
 BUILD_VULKAN="${BUILD_VULKAN:-0}"
-if [ "$BUILD_VULKAN" = "1" ] && ! command -v glslc >/dev/null 2>&1; then
-    echo "ERROR: BUILD_VULKAN=1 but glslc not found in PATH"
-    echo "       install vulkan-sdk or shaderc on the build host"
-    exit 1
-fi
-
-for variant in "${GGML_VARIANTS[@]}"; do
-    IFS=':' read -r name march <<< "$variant"
-    variant_dir="$BUILD_DIR/ggml-$name"
-    echo "--- Building ggml variant: $name ($march) ---"
-
-    cmake -S "$ROOT_DIR" -B "$variant_dir" \
-        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
-        -DANDROID_ABI=arm64-v8a \
-        -DANDROID_PLATFORM=android-28 \
-        -DANDROID_ARM_NEON=ON \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_FLAGS="-march=$march -O3" \
-        -DCMAKE_CXX_FLAGS="-march=$march -O3" \
-        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
-        -DGGML_VULKAN=OFF \
-        -DGGML_CUDA=OFF \
-        -DGGML_HIP=OFF \
-        -DMLX_ENGINE=OFF \
-        -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=TRUE \
-        -GNinja
-
-    ninja -C "$variant_dir" ggml-cpu
-
-    lib_dir="$variant_dir/lib/ollama"
-    if [ -d "$lib_dir" ]; then
-        mkdir -p "$DIST_DIR/lib/ollama"
-        # Rename each .so with the variant name so the 3 builds don't overwrite each other.
-        # Output: libggml-cpu-android_armv8_0_1.so / *_armv8_2_1.so / *_armv8_6_1.so
-        suffix="android_${name//./_}_1"
-        for so in "$lib_dir"/libggml-cpu*.so; do
-            if [ -f "$so" ]; then
-                base="$(basename "$so" .so)"
-                dest="$DIST_DIR/lib/ollama/${base}-${suffix}.so"
-                cp "$so" "$dest"
-                echo "  Copied: $(basename "$dest")"
-            fi
-        done
-    else
-        echo "  WARNING: lib/ollama not found in $variant_dir"
-    fi
-    echo ""
-done
-
-# --- Step 1b: Optional Vulkan backend ---
-
-if [ "$BUILD_VULKAN" = "1" ]; then
-    vulkan_dir="$BUILD_DIR/ggml-vulkan"
-    echo "--- Building ggml-vulkan (Android loader, runtime LD_LIBRARY_PATH=/system/lib64) ---"
-
-    # The NDK sysroot ships vulkan/vulkan.h (C) but not vulkan.hpp (C++).
-    # ggml-vulkan.cpp needs the C++ wrapper, so point find_package(Vulkan)
-    # at the host vulkan-headers package (installed via apt / LunarG SDK).
-    VULKAN_HOST_INCLUDE="${VULKAN_HOST_INCLUDE:-/usr/include}"
-    if [ ! -f "$VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp" ]; then
-        echo "ERROR: vulkan.hpp not found at $VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp"
-        echo "       install vulkan-headers (apt install vulkan-headers, or LunarG SDK)"
+if [ -n "$TERMUX_REUSE_RELEASE_TAG" ]; then
+    reuse_prebuilt_termux_libs "$TERMUX_REUSE_RELEASE_TAG" "$TERMUX_REUSE_RELEASE_REPO"
+else
+    if [ "$BUILD_VULKAN" = "1" ] && ! command -v glslc >/dev/null 2>&1; then
+        echo "ERROR: BUILD_VULKAN=1 but glslc not found in PATH"
+        echo "       install vulkan-sdk or shaderc on the build host"
         exit 1
     fi
 
-    # -isystem in CXX flags injects the host vulkan-headers path ahead of
-    # the NDK sysroot so ggml-vulkan.cpp's #include <vulkan/vulkan.hpp>
-    # resolves against the C++ wrapper that the NDK sysroot does not ship.
-    cmake -S "$ROOT_DIR" -B "$vulkan_dir" \
-        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
-        -DANDROID_ABI=arm64-v8a \
-        -DANDROID_PLATFORM=android-28 \
-        -DANDROID_ARM_NEON=ON \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
-        -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3 -isystem $VULKAN_HOST_INCLUDE" \
-        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
-        -DGGML_VULKAN=ON \
-        -DGGML_VULKAN_CHECK_RESULTS=OFF \
-        -DGGML_VULKAN_DEBUG=OFF \
-        -DGGML_CUDA=OFF \
-        -DGGML_HIP=OFF \
-        -DMLX_ENGINE=OFF \
-        -DVulkan_INCLUDE_DIR="$VULKAN_HOST_INCLUDE" \
-        -GNinja
+    for variant in "${GGML_VARIANTS[@]}"; do
+        IFS=':' read -r name march <<< "$variant"
+        variant_dir="$BUILD_DIR/ggml-$name"
+        echo "--- Building ggml variant: $name ($march) ---"
 
-    ninja -C "$vulkan_dir" ggml-vulkan
+        cmake -S "$ROOT_DIR" -B "$variant_dir" \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DANDROID_ARM_NEON=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS="-march=$march -O3" \
+            -DCMAKE_CXX_FLAGS="-march=$march -O3" \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DGGML_VULKAN=OFF \
+            -DGGML_CUDA=OFF \
+            -DGGML_HIP=OFF \
+            -DMLX_ENGINE=OFF \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=TRUE \
+            -GNinja
 
-    lib_dir="$vulkan_dir/lib/ollama"
-    if [ -d "$lib_dir" ]; then
-        mkdir -p "$DIST_DIR/lib/ollama/vulkan"
-        for so in "$lib_dir"/libggml-vulkan*.so "$lib_dir"/libggml-base*.so; do
-            if [ -f "$so" ]; then
-                cp "$so" "$DIST_DIR/lib/ollama/vulkan/"
-                echo "  Copied: $(basename "$so")"
-            fi
-        done
-    else
-        echo "  WARNING: lib/ollama not found in $vulkan_dir"
+        ninja -C "$variant_dir" ggml-cpu
+
+        lib_dir="$variant_dir/lib/ollama"
+        if [ -d "$lib_dir" ]; then
+            mkdir -p "$DIST_DIR/lib/ollama"
+            # Rename each .so with the variant name so the 3 builds don't overwrite each other.
+            # Output: libggml-cpu-android_armv8_0_1.so / *_armv8_2_1.so / *_armv8_6_1.so
+            suffix="android_${name//./_}_1"
+            for so in "$lib_dir"/libggml-cpu*.so; do
+                if [ -f "$so" ]; then
+                    base="$(basename "$so" .so)"
+                    dest="$DIST_DIR/lib/ollama/${base}-${suffix}.so"
+                    cp "$so" "$dest"
+                    echo "  Copied: $(basename "$dest")"
+                fi
+            done
+        else
+            echo "  WARNING: lib/ollama not found in $variant_dir"
+        fi
+        echo ""
+    done
+
+    # --- Step 1b: Optional Vulkan backend ---
+
+    if [ "$BUILD_VULKAN" = "1" ]; then
+        vulkan_dir="$BUILD_DIR/ggml-vulkan"
+        echo "--- Building ggml-vulkan (Android loader, runtime LD_LIBRARY_PATH=/system/lib64) ---"
+
+        # The NDK sysroot ships vulkan/vulkan.h (C) but not vulkan.hpp (C++).
+        # ggml-vulkan.cpp needs the C++ wrapper, so point find_package(Vulkan)
+        # at the host vulkan-headers package (installed via apt / LunarG SDK).
+        VULKAN_HOST_INCLUDE="${VULKAN_HOST_INCLUDE:-/usr/include}"
+        if [ ! -f "$VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp" ]; then
+            echo "ERROR: vulkan.hpp not found at $VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp"
+            echo "       install vulkan-headers (apt install vulkan-headers, or LunarG SDK)"
+            exit 1
+        fi
+
+        # -isystem in CXX flags injects the host vulkan-headers path ahead of
+        # the NDK sysroot so ggml-vulkan.cpp's #include <vulkan/vulkan.hpp>
+        # resolves against the C++ wrapper that the NDK sysroot does not ship.
+        cmake -S "$ROOT_DIR" -B "$vulkan_dir" \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DANDROID_ARM_NEON=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
+            -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3 -isystem $VULKAN_HOST_INCLUDE" \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DGGML_VULKAN=ON \
+            -DGGML_VULKAN_CHECK_RESULTS=OFF \
+            -DGGML_VULKAN_DEBUG=OFF \
+            -DGGML_CUDA=OFF \
+            -DGGML_HIP=OFF \
+            -DMLX_ENGINE=OFF \
+            -DVulkan_INCLUDE_DIR="$VULKAN_HOST_INCLUDE" \
+            -GNinja
+
+        ninja -C "$vulkan_dir" ggml-vulkan
+
+        lib_dir="$vulkan_dir/lib/ollama"
+        if [ -d "$lib_dir" ]; then
+            mkdir -p "$DIST_DIR/lib/ollama/vulkan"
+            for so in "$lib_dir"/libggml-vulkan*.so "$lib_dir"/libggml-base*.so; do
+                if [ -f "$so" ]; then
+                    cp "$so" "$DIST_DIR/lib/ollama/vulkan/"
+                    echo "  Copied: $(basename "$so")"
+                fi
+            done
+        else
+            echo "  WARNING: lib/ollama not found in $vulkan_dir"
+        fi
+        echo ""
     fi
-    echo ""
 fi
 
 # --- Step 2: Cross-compile Go binary ---

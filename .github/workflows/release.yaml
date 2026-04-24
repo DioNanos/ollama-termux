@@ -56,51 +56,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build unzip file curl glslang-tools
+            unzip file curl ca-certificates python3
 
-      - name: Install Vulkan shader compiler (glslc)
-        run: |
-          set -euo pipefail
-          # shaderc ships glslc. Pull a recent toolchain from LunarG's apt
-          # repo matching the runner's Ubuntu codename so ggml-vulkan's
-          # shader build can resolve modern GLSL extensions.
-          CODENAME="$(lsb_release -cs)"
-          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
-            | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc >/dev/null
-          sudo wget -qO "/etc/apt/sources.list.d/lunarg-vulkan-${CODENAME}.list" \
-            "https://packages.lunarg.com/vulkan/lunarg-vulkan-${CODENAME}.list"
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            vulkan-headers shaderc libvulkan-dev
-          glslc --version
-
-      - name: Stage isolated vulkan headers
-        run: |
-          set -euo pipefail
-          # Isolate the host vulkan/*.h* tree in a dedicated dir so we can
-          # pass it to the NDK cross-compile via -isystem without leaking
-          # unrelated glibc headers from /usr/include.
-          SRC_DIR="$(dpkg -L vulkan-headers libvulkan-dev 2>/dev/null \
-            | grep -E '/include/vulkan/vulkan\.hpp$' \
-            | head -1 | xargs -I{} dirname {} | xargs -I{} dirname {} || true)"
-          if [ -z "$SRC_DIR" ]; then
-            HPP="$(find /usr /opt -name vulkan.hpp 2>/dev/null | head -1 || true)"
-            SRC_DIR="$(dirname "$(dirname "$HPP")")"
-          fi
-          if [ -z "$SRC_DIR" ] || [ ! -f "$SRC_DIR/vulkan/vulkan.hpp" ]; then
-            echo "ERROR: vulkan.hpp not found after vulkan-headers install" >&2
-            exit 1
-          fi
-          STAGED="$RUNNER_TEMP/vulkan-headers"
-          mkdir -p "$STAGED"
-          cp -r "$SRC_DIR/vulkan" "$STAGED/"
-          # vk_video/ is referenced by the recent vulkan.hpp.
-          if [ -d "$SRC_DIR/vk_video" ]; then
-            cp -r "$SRC_DIR/vk_video" "$STAGED/"
-          fi
-          echo "Staged vulkan headers at: $STAGED"
-          ls "$STAGED"
-          echo "VULKAN_HOST_INCLUDE=$STAGED" >> "$GITHUB_ENV"
+      - name: Verify public release safety
+        run: bash .github/scripts/verify-public-release-safety.sh
 
       - name: Validate tag matches package version
         run: |
@@ -127,10 +86,18 @@ jobs:
             -o /tmp/android-ndk.zip
           unzip -q /tmp/android-ndk.zip -d "$(dirname "$NDK_DIR")"
 
+      - name: Resolve reused Termux lib source
+        run: |
+          set -euo pipefail
+          REUSE_TAG="${{ vars.TERMUX_REUSE_RELEASE_TAG }}"
+          if [ -z "$REUSE_TAG" ]; then
+            REUSE_TAG="$(node -p "require('./package.json').termuxReuseReleaseTag")"
+          fi
+          echo "TERMUX_REUSE_RELEASE_TAG=$REUSE_TAG" >> "$GITHUB_ENV"
+
       - name: Build Android release assets
         env:
           NDK_ROOT: ${{ env.NDK_DIR }}
-          BUILD_VULKAN: "1"
         run: ./scripts/build_termux.sh
 
       - name: Verify release assets
@@ -141,18 +108,16 @@ jobs:
           test -f "dist/ollama-termux-${VERSION}-android-arm64.tar.gz.sha256"
 
       - name: Generate release notes
+        env:
+          UPSTREAM_TAG: v0.21.3-rc0
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
-          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
-          ollama-termux ${VERSION}
-
-          Built from upstream Ollama and published as a Termux-first Android ARM64 fork.
-
-          Release assets:
-          - ollama-termux-${VERSION}-android-arm64.tar.gz
-          - ollama-termux-${VERSION}-android-arm64.tar.gz.sha256
-          EOF
+          export TERMUX_VERSION="$VERSION"
+          if [ -z "${TERMUX_REUSE_RELEASE_TAG:-}" ]; then
+            export TERMUX_REUSE_RELEASE_TAG="$(node -p "require('./package.json').termuxReuseReleaseTag")"
+          fi
+          python3 .github/scripts/generate_termux_release_notes.py "$RUNNER_TEMP/release-notes.md"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

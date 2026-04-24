@@ -58,8 +58,26 @@ func TestLaunchCmd(t *testing.T) {
 		if cmd.Long == "" {
 			t.Error("Long description should not be empty")
 		}
-		if !strings.Contains(cmd.Long, "hermes") {
-			t.Error("Long description should mention hermes")
+		if !strings.Contains(cmd.Long, "codex") {
+			t.Error("Long description should mention codex")
+		}
+		if !strings.Contains(cmd.Long, "qwen") {
+			t.Error("Long description should mention qwen")
+		}
+	})
+
+	t.Run("termux help only lists supported cli integrations", func(t *testing.T) {
+		withTermuxRuntimeForTest(t, true)
+		cmd := LaunchCmd(mockCheck, mockTUI)
+
+		if !strings.Contains(cmd.Long, "qwen") {
+			t.Error("termux help should mention qwen")
+		}
+		if strings.Contains(cmd.Long, "kimi") {
+			t.Error("termux help should not mention kimi")
+		}
+		if strings.Contains(cmd.Long, "openclaw") {
+			t.Error("termux help should not mention openclaw")
 		}
 	})
 

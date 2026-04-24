@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/ollama/ollama/cmd/config"
 )
 
@@ -511,6 +512,65 @@ func TestLaunchIntegration_ManagedSingleIntegrationRewritesWhenSavedDiffers(t *t
 	}
 }
 
+func TestLaunchIntegration_ManagedSingleIntegrationRewritesWhenLiveConfigDrifts(t *testing.T) {
+	tmpDir := t.TempDir()
+	setLaunchTestHome(t, tmpDir)
+	withInteractiveSession(t, true)
+	withLauncherHooks(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			fmt.Fprint(w, `{"models":[{"name":"gemma4"},{"name":"qwen3:8b"}]}`)
+		case "/api/show":
+			fmt.Fprint(w, `{"model_info":{"general.context_length":131072}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("OLLAMA_HOST", srv.URL)
+
+	if err := config.SaveIntegration("stubmanaged", []string{"gemma4"}); err != nil {
+		t.Fatalf("failed to save managed integration config: %v", err)
+	}
+
+	runner := &launcherManagedRunner{
+		currentModel: "qwen3:8b",
+	}
+	withIntegrationOverride(t, "stubmanaged", runner)
+
+	DefaultSingleSelector = func(title string, items []ModelItem, current string) (string, error) {
+		t.Fatal("selector should not be called when live config already provides the target")
+		return "", nil
+	}
+	DefaultConfirmPrompt = func(prompt string, options ConfirmOptions) (bool, error) {
+		return true, nil
+	}
+
+	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "stubmanaged"}); err != nil {
+		t.Fatalf("LaunchIntegration returned error: %v", err)
+	}
+
+	if diff := compareStrings(runner.configured, []string{"qwen3:8b"}); diff != "" {
+		t.Fatalf("expected Configure to reconcile stale saved config to live target: %s", diff)
+	}
+	if runner.refreshCalls != 1 {
+		t.Fatalf("expected runtime refresh once after drift reconciliation, got %d", runner.refreshCalls)
+	}
+	if runner.ranModel != "qwen3:8b" {
+		t.Fatalf("expected launch to run live configured model, got %q", runner.ranModel)
+	}
+
+	saved, err := config.LoadIntegration("stubmanaged")
+	if err != nil {
+		t.Fatalf("failed to reload managed integration config: %v", err)
+	}
+	if diff := compareStrings(saved.Models, []string{"qwen3:8b"}); diff != "" {
+		t.Fatalf("saved models mismatch after drift reconciliation: %s", diff)
+	}
+}
+
 func TestLaunchIntegration_ManagedSingleIntegrationStopsWhenRuntimeRefreshFails(t *testing.T) {
 	tmpDir := t.TempDir()
 	setLaunchTestHome(t, tmpDir)
@@ -640,7 +700,7 @@ func TestBuildLauncherState_InstalledAndCloudDisabled(t *testing.T) {
 	setLaunchTestHome(t, tmpDir)
 
 	binDir := t.TempDir()
-	writeFakeBinary(t, binDir, "opencode")
+	writeFakeBinary(t, binDir, "qwen")
 	t.Setenv("PATH", binDir)
 
 	if err := config.SetLastModel("glm-5:cloud"); err != nil {
@@ -649,8 +709,8 @@ func TestBuildLauncherState_InstalledAndCloudDisabled(t *testing.T) {
 	if err := config.SaveIntegration("claude", []string{"glm-5:cloud"}); err != nil {
 		t.Fatalf("failed to save claude config: %v", err)
 	}
-	if err := config.SaveIntegration("opencode", []string{"glm-5:cloud", "llama3.2"}); err != nil {
-		t.Fatalf("failed to save opencode config: %v", err)
+	if err := config.SaveIntegration("qwen", []string{"glm-5:cloud", "llama3.2"}); err != nil {
+		t.Fatalf("failed to save qwen config: %v", err)
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -671,8 +731,8 @@ func TestBuildLauncherState_InstalledAndCloudDisabled(t *testing.T) {
 		t.Fatalf("BuildLauncherState returned error: %v", err)
 	}
 
-	if !state.Integrations["opencode"].Installed {
-		t.Fatal("expected opencode to be marked installed")
+	if !state.Integrations["qwen"].Installed {
+		t.Fatal("expected qwen to be marked installed")
 	}
 	if state.Integrations["claude"].Installed {
 		t.Fatal("expected claude to be marked not installed")
@@ -683,11 +743,11 @@ func TestBuildLauncherState_InstalledAndCloudDisabled(t *testing.T) {
 	if state.Integrations["claude"].ModelUsable {
 		t.Fatal("expected claude cloud config to be unusable when cloud is disabled")
 	}
-	if !state.Integrations["opencode"].ModelUsable {
-		t.Fatal("expected editor config with a remaining local model to stay usable")
+	if state.Integrations["qwen"].ModelUsable {
+		t.Fatal("expected qwen cloud-first config to stay unusable when cloud is disabled")
 	}
-	if state.Integrations["opencode"].CurrentModel != "llama3.2" {
-		t.Fatalf("expected editor current model to fall back to remaining local model, got %q", state.Integrations["opencode"].CurrentModel)
+	if state.Integrations["qwen"].CurrentModel != "glm-5:cloud" {
+		t.Fatalf("expected qwen current model to remain the saved cloud default, got %q", state.Integrations["qwen"].CurrentModel)
 	}
 }
 
@@ -720,22 +780,20 @@ func TestBuildLauncherState_MigratesLegacyOpenclawAliasConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildLauncherState returned error: %v", err)
 	}
-	if state.Integrations["claude"].CurrentModel != "llama3.2" {
-		t.Fatalf("expected openclaw state to reuse legacy alias config, got %q", state.Integrations["claude"].CurrentModel)
+	if state.Integrations["claude"].CurrentModel != "" {
+		t.Fatalf("legacy openclaw alias config should not bleed into supported integrations, got %q", state.Integrations["claude"].CurrentModel)
 	}
 
-	migrated, err := config.LoadIntegration("claude")
+	if _, err := config.LoadIntegration("claude"); err == nil {
+		t.Fatal("unsupported openclaw alias config should not migrate into claude")
+	}
+
+	legacy, err := config.LoadIntegration("clawdbot")
 	if err != nil {
-		t.Fatalf("expected canonical config to be migrated, got %v", err)
+		t.Fatalf("legacy alias config should remain untouched, got %v", err)
 	}
-	if !slices.Equal(migrated.Models, []string{"llama3.2"}) {
-		t.Fatalf("unexpected migrated models: %v", migrated.Models)
-	}
-	if migrated.Aliases["primary"] != "llama3.2" {
-		t.Fatalf("expected aliases to migrate, got %v", migrated.Aliases)
-	}
-	if !migrated.Onboarded {
-		t.Fatal("expected onboarding state to migrate to canonical openclaw key")
+	if !slices.Equal(legacy.Models, []string{"llama3.2"}) {
+		t.Fatalf("unexpected legacy models: %v", legacy.Models)
 	}
 }
 
@@ -1219,8 +1277,9 @@ func TestLaunchIntegration_EditorForceConfigure_FloatsCheckedModelsInPicker(t *t
 	if len(gotItems) == 0 {
 		t.Fatal("expected multi selector to receive items")
 	}
-	if gotItems[0] != "qwen3.5:cloud" {
-		t.Fatalf("expected checked models floated to top with qwen3.5:cloud first, got %v", gotItems)
+	wantItems := recommendedNames("qwen3.5")
+	if diff := cmp.Diff(wantItems, gotItems); diff != "" {
+		t.Fatalf("expected fixed recommended order in selector items (-want +got):\n%s", diff)
 	}
 	if len(gotPreChecked) < 2 {
 		t.Fatalf("expected prechecked models to be preserved, got %v", gotPreChecked)

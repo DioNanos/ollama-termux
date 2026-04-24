@@ -27,5 +27,8 @@ jobs:
       - name: Validate installer syntax
         run: node -c install.js
 
+      - name: Verify public release safety
+        run: bash .github/scripts/verify-public-release-safety.sh
+
       - name: Validate npm package contents
         run: npm pack --dry-run

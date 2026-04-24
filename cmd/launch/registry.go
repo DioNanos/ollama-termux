@@ -3,6 +3,7 @@ package launch
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -34,11 +35,35 @@ type IntegrationInfo struct {
 
 var launcherIntegrationOrder = []string{"codex", "qwen", "claude"}
 
+var termuxLauncherIntegrationOrder = []string{"codex", "qwen", "claude"}
+
+var termuxSupportedIntegrationNames = map[string]bool{
+	"claude": true,
+	"codex":  true,
+	"qwen":   true,
+}
+
+var isTermuxRuntime = func() bool {
+	return runtime.GOOS == "android"
+}
+
 var integrationSpecs = []*IntegrationSpec{
+	{
+		Name:        "claude",
+		Runner:      &Claude{},
+		Description: "Anthropic Claude Code (frozen @2.1.112 on Termux)",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := (&Claude{}).findPath()
+				return err == nil
+			},
+			URL: "https://code.claude.com/docs/en/quickstart",
+		},
+	},
 	{
 		Name:        "codex",
 		Runner:      &Codex{},
-		Description: "OpenAI's open-source coding agent (primary)",
+		Description: "OpenAI's open-source coding agent (primary on Termux)",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
 				_, err := (&Codex{}).findCommand()
@@ -51,7 +76,7 @@ var integrationSpecs = []*IntegrationSpec{
 	{
 		Name:        "qwen",
 		Runner:      &Qwen{},
-		Description: "Qwen Code — OpenAI-compat coding agent (secondary)",
+		Description: "Qwen Code — OpenAI-compat coding agent (secondary on Termux)",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
 				_, err := (&Qwen{}).findCommand()
@@ -59,18 +84,6 @@ var integrationSpecs = []*IntegrationSpec{
 			},
 			URL:     "https://www.npmjs.com/package/@mmmbuto/qwen-code-termux",
 			Command: []string{"npm", "install", "-g", "@mmmbuto/qwen-code-termux"},
-		},
-	},
-	{
-		Name:        "claude",
-		Runner:      &Claude{},
-		Description: "Anthropic Claude Code (frozen @2.1.112 — Termux dropped upstream)",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, err := (&Claude{}).findPath()
-				return err == nil
-			},
-			URL: "https://code.claude.com/docs/en/quickstart",
 		},
 	},
 }
@@ -83,6 +96,24 @@ func init() {
 
 func hyperlink(url, text string) string {
 	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, text)
+}
+
+func launcherIntegrationOrderForRuntime() []string {
+	if isTermuxRuntime() {
+		return termuxLauncherIntegrationOrder
+	}
+	return launcherIntegrationOrder
+}
+
+func integrationSupportedForRuntime(name string) bool {
+	if !isTermuxRuntime() {
+		return true
+	}
+	return termuxSupportedIntegrationNames[strings.ToLower(name)]
+}
+
+func termuxUnsupportedIntegrationError(name string) error {
+	return fmt.Errorf("integration %q is not supported in ollama-termux", name)
 }
 
 func rebuildIntegrationSpecIndexes() {
@@ -119,8 +150,13 @@ func rebuildIntegrationSpecIndexes() {
 		}
 	}
 
-	orderSeen := make(map[string]bool, len(launcherIntegrationOrder))
-	for _, name := range launcherIntegrationOrder {
+	validateLauncherOrder(launcherIntegrationOrder)
+	validateLauncherOrder(termuxLauncherIntegrationOrder)
+}
+
+func validateLauncherOrder(order []string) {
+	orderSeen := make(map[string]bool, len(order))
+	for _, name := range order {
 		key := strings.ToLower(name)
 		if orderSeen[key] {
 			panic(fmt.Sprintf("launch: duplicate launcher order entry %q", key))
@@ -146,6 +182,9 @@ func LookupIntegrationSpec(name string) (*IntegrationSpec, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown integration: %s", name)
 	}
+	if !integrationSupportedForRuntime(spec.Name) {
+		return nil, termuxUnsupportedIntegrationError(spec.Name)
+	}
 	return spec, nil
 }
 
@@ -165,11 +204,15 @@ func ListVisibleIntegrationSpecs() []IntegrationSpec {
 		if spec.Hidden {
 			continue
 		}
+		if !integrationSupportedForRuntime(spec.Name) {
+			continue
+		}
 		visible = append(visible, *spec)
 	}
 
-	orderRank := make(map[string]int, len(launcherIntegrationOrder))
-	for i, name := range launcherIntegrationOrder {
+	order := launcherIntegrationOrderForRuntime()
+	orderRank := make(map[string]int, len(order))
+	for i, name := range order {
 		orderRank[name] = i + 1
 	}
 

@@ -44,6 +44,9 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      - name: Verify public release safety
+        run: bash .github/scripts/verify-public-release-safety.sh
+
       - name: Validate version and release assets
         run: |
           set -euo pipefail

@@ -7,9 +7,17 @@ func OverrideIntegration(name string, runner Runner) func() {
 	spec, err := LookupIntegrationSpec(name)
 	if err != nil {
 		key := strings.ToLower(name)
-		integrationSpecsByName[key] = &IntegrationSpec{Name: key, Runner: runner}
+		newSpec := &IntegrationSpec{Name: key, Runner: runner}
+		integrationSpecs = append(integrationSpecs, newSpec)
+		rebuildIntegrationSpecIndexes()
 		return func() {
-			delete(integrationSpecsByName, key)
+			for i, spec := range integrationSpecs {
+				if spec.Name == key {
+					integrationSpecs = append(integrationSpecs[:i], integrationSpecs[i+1:]...)
+					break
+				}
+			}
+			rebuildIntegrationSpecIndexes()
 		}
 	}
 
