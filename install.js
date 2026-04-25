@@ -18,6 +18,7 @@ const path = require('path');
 const TERMUX_PREFIX = '/data/data/com.termux/files/usr';
 const OLLAMA_BIN = path.join(TERMUX_PREFIX, 'bin', 'ollama');
 const OLLAMA_LIB = path.join(TERMUX_PREFIX, 'lib', 'ollama');
+const OLLAMA_REAL_BIN = path.join(OLLAMA_LIB, 'ollama');
 const GITHUB_REPO = 'DioNanos/ollama-termux';
 const VERSION = require('./package.json').version;
 
@@ -81,6 +82,17 @@ function backupIfExists(filePath) {
     log(`Backing up ${path.basename(filePath)} to ${path.basename(backup)}`);
     fs.copyFileSync(filePath, backup);
   }
+}
+
+function writeOllamaWrapper() {
+  const script = `#!/data/data/com.termux/files/usr/bin/sh
+PREFIX="\${PREFIX:-/data/data/com.termux/files/usr}"
+OLLAMA_REAL_BIN="$PREFIX/lib/ollama/ollama"
+export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib/ollama\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$OLLAMA_REAL_BIN" "$@"
+`;
+  fs.writeFileSync(OLLAMA_BIN, script, { mode: 0o755 });
+  fs.chmodSync(OLLAMA_BIN, 0o755);
 }
 
 async function main() {
@@ -147,19 +159,23 @@ async function main() {
 
   // Backup existing files
   backupIfExists(OLLAMA_BIN);
+  fs.mkdirSync(OLLAMA_LIB, { recursive: true });
 
-  // Install binary
+  // Install the real binary under lib/ollama and expose a Termux-safe wrapper
+  // from bin/ollama so clean shells can resolve libc++_shared.so.
   const extractedBin = path.join(tmpDir, 'bin', 'ollama');
   if (fs.existsSync(extractedBin)) {
-    fs.copyFileSync(extractedBin, OLLAMA_BIN);
-    fs.chmodSync(OLLAMA_BIN, 0o755);
-    log('Installed: ' + OLLAMA_BIN);
+    backupIfExists(OLLAMA_REAL_BIN);
+    fs.copyFileSync(extractedBin, OLLAMA_REAL_BIN);
+    fs.chmodSync(OLLAMA_REAL_BIN, 0o755);
+    writeOllamaWrapper();
+    log('Installed: ' + OLLAMA_REAL_BIN);
+    log('Installed wrapper: ' + OLLAMA_BIN);
   }
 
   // Install ggml backends
   const extractedLib = path.join(tmpDir, 'lib', 'ollama');
   if (fs.existsSync(extractedLib)) {
-    fs.mkdirSync(OLLAMA_LIB, { recursive: true });
     const soFiles = fs.readdirSync(extractedLib).filter(f => f.endsWith('.so'));
     for (const so of soFiles) {
       const src = path.join(extractedLib, so);

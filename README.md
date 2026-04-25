@@ -104,8 +104,13 @@ The npm package is an installer wrapper. During `postinstall`, it downloads the
 matching GitHub Release asset for the published package version, verifies the
 SHA256 checksum when available, and installs:
 
-- `bin/ollama`
+- `bin/ollama` as a Termux-safe launcher wrapper
+- `lib/ollama/ollama` as the native Ollama binary
 - `lib/ollama/*.so`
+
+The launcher wrapper sets the Termux library path before starting the native
+binary, so `ollama` works from clean shells and scripts without relying on a
+user-specific `.zshrc`.
 
 ### 2. Install supported coding CLIs
 
@@ -232,9 +237,9 @@ Backend selection is done at runtime by the ggml layer.
 
 ## Validation Status
 
-Current public release: **`v0.21.3-termux.1`** on npm (`latest`) and GitHub Releases.
+Current public release: **`v0.21.3-termux.2`** on npm (`latest`) and GitHub Releases.
 
-Current release target on `develop`: **released as `v0.21.3-termux.1`**.
+Current release target on `develop`: **released as `v0.21.3-termux.2`**.
 
 On-device validation on Pixel 9 Pro (Tensor G4 / Mali-G715):
 
