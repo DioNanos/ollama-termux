@@ -232,9 +232,9 @@ Backend selection is done at runtime by the ggml layer.
 
 ## Validation Status
 
-Current public release: **`v0.21.0-termux.16`** on npm (`latest`) and GitHub Releases.
+Current public release: **`v0.21.3-termux.1`** on npm (`latest`) and GitHub Releases.
 
-Current release target on `develop`: **`v0.21.3-termux.1`**.
+Current release target on `develop`: **released as `v0.21.3-termux.1`**.
 
 On-device validation on Pixel 9 Pro (Tensor G4 / Mali-G715):
 
