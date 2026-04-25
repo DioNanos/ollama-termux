@@ -3,7 +3,16 @@
   "version": "0.21.3-termux.2",
   "description": "Upstream Ollama published as a Termux-first Android ARM64 fork with prebuilt release assets and mobile-oriented runtime tuning.",
   "termuxReuseReleaseTag": "v0.21.0-termux.16",
-  "keywords": ["ollama", "termux", "android", "arm64", "cli", "ai", "inference", "llm"],
+  "keywords": [
+    "ollama",
+    "termux",
+    "android",
+    "arm64",
+    "cli",
+    "ai",
+    "inference",
+    "llm"
+  ],
   "homepage": "https://github.com/DioNanos/ollama-termux#readme",
   "bugs": {
     "url": "https://github.com/DioNanos/ollama-termux/issues"
@@ -32,7 +41,7 @@
     "docs/VULKAN_ANDROID_LOADER.md"
   ],
   "bin": {
-    "ollama-termux": "./install.js"
+    "ollama-termux": "install.js"
   },
   "publishConfig": {
     "access": "public"
