@@ -574,3 +574,14 @@ func pullModel(ctx context.Context, client *api.Client, model string, insecure b
 	request := api.PullRequest{Name: model, Insecure: insecure}
 	return client.Pull(ctx, &request, fn)
 }
+
+func displayVRAM(vramBytes int64) string {
+	if vramBytes <= 0 {
+		return ""
+	}
+	gb := float64(vramBytes) / format.GigaByte
+	if gb == math.Trunc(gb) {
+		return fmt.Sprintf("~%.0fGB", gb)
+	}
+	return fmt.Sprintf("~%.1fGB", gb)
+}
