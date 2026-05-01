@@ -109,7 +109,7 @@ jobs:
 
       - name: Generate release notes
         env:
-          UPSTREAM_TAG: v0.21.3-rc0
+          UPSTREAM_TAG: v0.22.1
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"

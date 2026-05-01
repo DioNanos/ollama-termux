@@ -24,17 +24,12 @@ import (
 )
 
 var recommendedModels = []ModelItem{
-	{Name: "qwen3.5:4b", Description: "Recommended local default for coding, reasoning, and visual understanding", Recommended: true},
-	{Name: "gemma4:e4b", Description: "Recommended local default for reasoning and code generation", Recommended: true},
-	{Name: "qwen3.5:cloud", Description: "Cloud-backed qwen3.5 with larger context for agentic tool use", Recommended: true},
-	{Name: "kimi-k2.5:cloud", Description: "Cloud multimodal reasoning with subagents", Recommended: true},
-	{Name: "glm-5.1:cloud", Description: "Cloud reasoning and code generation", Recommended: true},
-	{Name: "minimax-m2.7:cloud", Description: "Fast cloud coding and real-world productivity", Recommended: true},
-}
-
-var recommendedVRAM = map[string]string{
-	"gemma4:e4b":  "~16GB",
-	"qwen3.5:4b": "~11GB",
+	{Name: "qwen3.5:4b", Description: "Recommended local default for coding, reasoning, and visual understanding", Recommended: true, VRAMBytes: 11 * format.GigaByte},
+	{Name: "gemma4:e4b", Description: "Recommended local default for reasoning and code generation", Recommended: true, VRAMBytes: 16 * format.GigaByte},
+	{Name: "qwen3.5:cloud", Description: "Cloud-backed qwen3.5 with larger context for agentic tool use", Recommended: true, ContextLength: 262_144, MaxOutputTokens: 32_768},
+	{Name: "kimi-k2.5:cloud", Description: "Cloud multimodal reasoning with subagents", Recommended: true, ContextLength: 262_144, MaxOutputTokens: 262_144},
+	{Name: "glm-5.1:cloud", Description: "Cloud reasoning and code generation", Recommended: true, ContextLength: 202_752, MaxOutputTokens: 131_072},
+	{Name: "minimax-m2.7:cloud", Description: "Fast cloud coding and real-world productivity", Recommended: true, ContextLength: 204_800, MaxOutputTokens: 128_000},
 }
 
 // cloudModelLimit holds context and output token limits for a cloud model.

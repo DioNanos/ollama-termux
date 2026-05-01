@@ -237,9 +237,9 @@ Backend selection is done at runtime by the ggml layer.
 
 ## Validation Status
 
-Current public release: **`v0.21.3-termux.2`** on npm (`latest`) and GitHub Releases.
+Current public release target: **`v0.22.1-termux.1`** on npm (`next`) and GitHub Releases.
 
-Current release target on `develop`: **released as `v0.21.3-termux.2`**.
+Current stable npm release remains **`v0.21.3-termux.2`** on `latest` until device validation promotes `next`.
 
 On-device validation on Pixel 9 Pro (Tensor G4 / Mali-G715):
 
@@ -250,7 +250,7 @@ On-device validation on Pixel 9 Pro (Tensor G4 / Mali-G715):
 - ✅ Qwen Code launcher (`@mmmbuto/qwen-code-termux`) via OpenAI-compat `/v1`
 - ✅ Claude Code launcher (`@anthropic-ai/claude-code@2.1.112`, frozen)
 
-Release flow for `v0.21.3-termux.1` and later:
+Release flow for `v0.22.1-termux.1` and later:
 
 - queue Forge build/package validation on `mgm` from `develop`
 - follow that queued build until completion before touching `main`

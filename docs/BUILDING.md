@@ -17,9 +17,9 @@ exist.
 
 The fork tracks upstream Ollama versions and appends a Termux release suffix:
 
-- upstream base: `0.21.0`
-- fork release: `0.21.0-termux.1`
-- git tag: `v0.21.0-termux.1`
+- upstream base: `0.22.1`
+- fork release: `0.22.1-termux.1`
+- git tag: `v0.22.1-termux.1`
 
 `package.json` is the source of truth for the fork version. The build script and
 release workflow read from it.
