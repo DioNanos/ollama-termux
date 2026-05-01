@@ -322,6 +322,10 @@ func EnsureIntegrationInstalled(name string, runner Runner) error {
 		return fmt.Errorf("%s is not installed", runner)
 	}
 
+	if integration.spec.Name == "pool" && poolsideGOOS == "windows" {
+		return poolsideUnsupportedError()
+	}
+
 	if integration.installed {
 		return nil
 	}

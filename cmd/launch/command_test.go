@@ -288,6 +288,8 @@ func TestLaunchCmdModelFlagClearsDisabledCloudOverride(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/status":
 			fmt.Fprintf(w, `{"cloud":{"disabled":true,"source":"config"}}`)
+		case "/api/experimental/model-recommendations":
+			fmt.Fprint(w, `{"recommendations":[]}`)
 		case "/api/tags":
 			fmt.Fprint(w, `{"models":[{"name":"llama3.2"}]}`)
 		case "/api/show":
@@ -489,6 +491,8 @@ func TestLaunchCmdIntegrationArgPromptsForModelWithSavedSelection(t *testing.T) 
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/experimental/model-recommendations":
+			fmt.Fprint(w, `{"recommendations":[]}`)
 		case "/api/tags":
 			fmt.Fprint(w, `{"models":[{"name":"llama3.2"},{"name":"qwen3:8b"}]}`)
 		case "/api/show":

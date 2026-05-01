@@ -4,17 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/cmd/config"
 	"github.com/ollama/ollama/cmd/internal/fileutil"
+	"github.com/ollama/ollama/format"
 	internalcloud "github.com/ollama/ollama/internal/cloud"
 	"github.com/ollama/ollama/internal/modelref"
 	"github.com/ollama/ollama/progress"
@@ -40,10 +43,10 @@ type cloudModelLimit struct {
 	Output  int
 }
 
-// cloudModelLimits maps cloud model base names to their token limits.
+// extraCloudModelLimits maps cloud model base names to token limits for models
+// that are not already covered by recommendedModels fallback entries.
 // TODO(parthsareen): grab context/output limits from model info instead of hardcoding
-var cloudModelLimits = map[string]cloudModelLimit{
-	"minimax-m2.7":        {Context: 204_800, Output: 128_000},
+var extraCloudModelLimits = map[string]cloudModelLimit{
 	"cogito-2.1:671b":     {Context: 163_840, Output: 65_536},
 	"deepseek-v3.1:671b":  {Context: 163_840, Output: 163_840},
 	"deepseek-v3.2":       {Context: 163_840, Output: 65_536},
@@ -65,16 +68,72 @@ var cloudModelLimits = map[string]cloudModelLimit{
 	"qwen3.5":             {Context: 262_144, Output: 32_768},
 }
 
+var cloudModelLimits = mergeCloudModelLimits(cloudModelLimitsFromRecommendations(recommendedModels), extraCloudModelLimits)
+
+var (
+	dynamicCloudModelLimitsMu sync.RWMutex
+	dynamicCloudModelLimits   = map[string]cloudModelLimit{}
+)
+
 // lookupCloudModelLimit returns the token limits for a cloud model.
 // It normalizes explicit cloud source suffixes before checking the shared limit map.
 func lookupCloudModelLimit(name string) (cloudModelLimit, bool) {
 	base, stripped := modelref.StripCloudSourceTag(name)
 	if stripped {
+		dynamicCloudModelLimitsMu.RLock()
+		l, ok := dynamicCloudModelLimits[base]
+		dynamicCloudModelLimitsMu.RUnlock()
+		if ok {
+			return l, true
+		}
 		if l, ok := cloudModelLimits[base]; ok {
 			return l, true
 		}
 	}
 	return cloudModelLimit{}, false
+}
+
+func setDynamicCloudModelLimits(limits map[string]cloudModelLimit) {
+	dynamicCloudModelLimitsMu.Lock()
+	defer dynamicCloudModelLimitsMu.Unlock()
+	if limits == nil {
+		dynamicCloudModelLimits = map[string]cloudModelLimit{}
+		return
+	}
+	cp := make(map[string]cloudModelLimit, len(limits))
+	for k, v := range limits {
+		cp[k] = v
+	}
+	dynamicCloudModelLimits = cp
+}
+
+func cloudModelLimitsFromRecommendations(recommendations []ModelItem) map[string]cloudModelLimit {
+	limits := make(map[string]cloudModelLimit, len(recommendations))
+	for _, rec := range recommendations {
+		if !isCloudModelName(rec.Name) || rec.ContextLength <= 0 || rec.MaxOutputTokens <= 0 {
+			continue
+		}
+		base, stripped := modelref.StripCloudSourceTag(rec.Name)
+		if !stripped || base == "" {
+			continue
+		}
+		limits[base] = cloudModelLimit{
+			Context: rec.ContextLength,
+			Output:  rec.MaxOutputTokens,
+		}
+	}
+	return limits
+}
+
+func mergeCloudModelLimits(base map[string]cloudModelLimit, overlay map[string]cloudModelLimit) map[string]cloudModelLimit {
+	out := make(map[string]cloudModelLimit, len(base)+len(overlay))
+	for name, limit := range base {
+		out[name] = limit
+	}
+	for name, limit := range overlay {
+		out[name] = limit
+	}
+	return out
 }
 
 // missingModelPolicy controls how model-not-found errors should be handled.
@@ -281,13 +340,17 @@ func confirmConfigEdit(runner Runner, paths []string) (bool, error) {
 
 // buildModelList merges existing models with recommendations for selection UIs.
 func buildModelList(existing []modelInfo, preChecked []string, current string) (items []ModelItem, orderedChecked []string, existingModels, cloudModels map[string]bool) {
+	return buildModelListWithRecommendations(existing, recommendedModels, preChecked, current)
+}
+
+func buildModelListWithRecommendations(existing []modelInfo, recommendations []ModelItem, preChecked []string, current string) (items []ModelItem, orderedChecked []string, existingModels, cloudModels map[string]bool) {
 	existingModels = make(map[string]bool)
 	cloudModels = make(map[string]bool)
 	recommended := make(map[string]bool)
 	var hasLocalModel, hasCloudModel bool
 
 	recDesc := make(map[string]string)
-	for _, rec := range recommendedModels {
+	for _, rec := range recommendations {
 		recommended[rec.Name] = true
 		recDesc[rec.Name] = rec.Description
 	}
@@ -306,7 +369,7 @@ func buildModelList(existing []modelInfo, preChecked []string, current string) (
 		items = append(items, item)
 	}
 
-	for _, rec := range recommendedModels {
+	for _, rec := range recommendations {
 		if existingModels[rec.Name] || existingModels[rec.Name+":latest"] {
 			continue
 		}
@@ -352,7 +415,7 @@ func buildModelList(existing []modelInfo, preChecked []string, current string) (
 			if items[i].Description != "" {
 				parts = append(parts, items[i].Description)
 			}
-			if vram := recommendedVRAM[items[i].Name]; vram != "" {
+			if vram := displayVRAM(items[i].VRAMBytes); vram != "" {
 				parts = append(parts, vram)
 			}
 			parts = append(parts, "(not downloaded)")
@@ -361,12 +424,12 @@ func buildModelList(existing []modelInfo, preChecked []string, current string) (
 	}
 
 	recRank := make(map[string]int)
-	for i, rec := range recommendedModels {
+	for i, rec := range recommendations {
 		recRank[rec.Name] = i + 1
 	}
 
 	if hasLocalModel || hasCloudModel {
-		// Keep the Recommended section pinned to recommendedModels order. Checked
+		// Keep the Recommended section pinned to recommendation order. Checked
 		// and default-model priority only apply within the More section.
 		slices.SortStableFunc(items, func(a, b ModelItem) int {
 			ac, bc := checked[a.Name], checked[b.Name]
