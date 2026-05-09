@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
 )
 
@@ -33,7 +34,7 @@ func GetCPUMem() (memInfo, error) {
 // compensate for aggressive Android caching, 75% as a ceiling to avoid the
 // oom_killer when foreground apps are consuming significant RAM.
 func adjustMemForAndroid(mem memInfo) memInfo {
-	if os.Getenv("TERMUX_VERSION") == "" && os.Getenv("PREFIX") != "/data/data/com.termux/files/usr" {
+	if !envconfig.IsTermux() && os.Getenv("PREFIX") != "/data/data/com.termux/files/usr" {
 		return mem
 	}
 	floor := uint64(float64(mem.TotalMemory) * 0.60)

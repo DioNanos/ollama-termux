@@ -77,7 +77,7 @@ func TestIntegrationLookup(t *testing.T) {
 }
 
 func TestIntegrationRegistry(t *testing.T) {
-	expectedIntegrations := []string{"claude", "codex", "qwen"}
+	expectedIntegrations := []string{"claude", "codex", "codex-vl", "qwen"}
 
 	for _, name := range expectedIntegrations {
 		t.Run(name, func(t *testing.T) {
@@ -110,7 +110,7 @@ func TestTermuxVisibleIntegrationsOnlyShowSupportedCLIs(t *testing.T) {
 		gotNames = append(gotNames, info.Name)
 	}
 
-	want := []string{"codex", "qwen", "claude"}
+	want := []string{"codex-vl", "codex", "qwen", "claude"}
 	if diff := cmp.Diff(want, gotNames); diff != "" {
 		t.Fatalf("visible integrations mismatch (-want +got):\n%s", diff)
 	}
@@ -1813,7 +1813,7 @@ func TestListIntegrationInfos(t *testing.T) {
 		for _, info := range infos {
 			got = append(got, info.Name)
 		}
-		want := []string{"codex", "qwen", "claude"}
+		want := []string{"codex-vl", "codex", "qwen", "claude"}
 		if diff := compareStrings(got, want); diff != "" {
 			t.Fatalf("launcher integration order mismatch: %s", diff)
 		}
@@ -1831,7 +1831,7 @@ func TestListIntegrationInfos(t *testing.T) {
 	})
 
 	t.Run("includes known integrations", func(t *testing.T) {
-		known := map[string]bool{"claude": false, "codex": false, "qwen": false}
+		known := map[string]bool{"claude": false, "codex": false, "codex-vl": false, "qwen": false}
 		for _, info := range infos {
 			if _, ok := known[info.Name]; ok {
 				known[info.Name] = true

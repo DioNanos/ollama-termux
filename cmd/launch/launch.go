@@ -269,6 +269,7 @@ type SelectionItem struct {
 
 func launchCommandSupportedIntegrationsHelp() string {
 	return `Supported integrations:
+  codex-vl  Codex VL — Vivling-enhanced fork (primary on Termux)
   codex     Codex (Termux fork)
   qwen      Qwen Code (Termux fork)
   claude    Claude Code (frozen @2.1.112)`

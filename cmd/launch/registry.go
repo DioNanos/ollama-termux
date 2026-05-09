@@ -33,18 +33,19 @@ type IntegrationInfo struct {
 	Description string
 }
 
-var launcherIntegrationOrder = []string{"codex", "qwen", "claude"}
+var launcherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude"}
 
-var termuxLauncherIntegrationOrder = []string{"codex", "qwen", "claude"}
+var termuxLauncherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude"}
 
 var termuxSupportedIntegrationNames = map[string]bool{
-	"claude": true,
-	"codex":  true,
-	"qwen":   true,
+	"claude":   true,
+	"codex":    true,
+	"codex-vl": true,
+	"qwen":     true,
 }
 
 var isTermuxRuntime = func() bool {
-	return runtime.GOOS == "android"
+	return envconfig.IsTermux() || runtime.GOOS == "android"
 }
 
 var integrationSpecs = []*IntegrationSpec{
@@ -61,9 +62,23 @@ var integrationSpecs = []*IntegrationSpec{
 		},
 	},
 	{
+		Name:        "codex-vl",
+		Runner:      &CodexVL{},
+		Description: "Codex VL — Vivling-enhanced Codex fork (primary on Termux)",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := (&CodexVL{}).findCommand()
+				return err == nil
+			},
+			URL:     "https://forge.dag/codex-vl",
+			Command: []string{"npm", "install", "-g", "@mmmbuto/codex-vl"},
+		},
+	},
+	{
+	{
 		Name:        "codex",
 		Runner:      &Codex{},
-		Description: "OpenAI's open-source coding agent (primary on Termux)",
+		Description: "OpenAI's open-source coding agent (secondary on Termux)",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
 				_, err := (&Codex{}).findCommand()

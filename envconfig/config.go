@@ -454,3 +454,8 @@ func NoCloudSource() string {
 		return "none"
 	}
 }
+
+// IsTermux reports whether the process is running inside Termux on Android.
+func IsTermux() bool {
+	return os.Getenv("TERMUX_VERSION") != ""
+}

@@ -173,7 +173,7 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 	opts.NumBatch = min(opts.NumBatch, opts.NumCtx)
 
 	// Mobile: auto-limit context window based on available memory
-	if isTermux() {
+	if envconfig.IsTermux() {
 		memMB := systemInfo.FreeMemory / (1024 * 1024)
 		var maxCtx int
 		switch {
@@ -201,7 +201,7 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 		loadRequest.NumThreads = opts.NumThread
 	} else if defaultThreads > 0 {
 		loadRequest.NumThreads = defaultThreads
-		if isTermux() {
+		if envconfig.IsTermux() {
 			bigCores := countBigCores()
 			if bigCores > 0 && loadRequest.NumThreads > bigCores {
 				loadRequest.NumThreads = bigCores
@@ -228,7 +228,7 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 	fa := envconfig.FlashAttention(f.FlashAttention())
 
 	// Mobile: force-enable flash attention for memory savings on CPU-only inference
-	if !fa && isTermux() {
+	if !fa && envconfig.IsTermux() {
 		if f.SupportsFlashAttention() {
 			fa = true
 			slog.Info("mobile: flash attention auto-enabled")
@@ -422,7 +422,7 @@ func StartRunner(ollamaEngine bool, modelPath string, gpuLibs []string, out io.W
 	// /vendor/lib64/hw/vulkan.*.so. The Termux loader cannot reach that path.
 	// Prepending /system/lib64 lets dlopen("libvulkan.so") from ggml-vulkan
 	// resolve to the Android loader and pick up the real GPU ICD.
-	if isTermux() {
+	if envconfig.IsTermux() {
 		libraryPaths = append([]string{"/system/lib64"}, libraryPaths...)
 	}
 
@@ -434,7 +434,7 @@ func StartRunner(ollamaEngine bool, modelPath string, gpuLibs []string, out io.W
 	// /data/data/com.termux/files/usr/lib. The runner subprocess needs
 	// LD_LIBRARY_PATH to find libc++_shared.so and, when Vulkan is enabled,
 	// the Android system Vulkan loader at /system/lib64.
-	if isTermux() {
+	if envconfig.IsTermux() {
 		termuxLD := "/data/data/com.termux/files/usr/lib:/system/lib64"
 		if existing := os.Getenv("LD_LIBRARY_PATH"); existing != "" {
 			termuxLD = termuxLD + ":" + existing
@@ -2014,11 +2014,6 @@ func (s *ollamaServer) GetDeviceInfos(ctx context.Context) []ml.DeviceInfo {
 		// else no longer running so suppress logging as a failure is expected
 	}
 	return devices
-}
-
-// isTermux reports whether the current environment is Termux on Android.
-func isTermux() bool {
-	return os.Getenv("TERMUX_VERSION") != ""
 }
 
 // countBigCores returns the number of performance cores on Android by reading
