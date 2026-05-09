@@ -22,6 +22,7 @@ type LauncherState struct {
 	RunModel       string
 	RunModelUsable bool
 	Integrations   map[string]LauncherIntegrationState
+	AccountState   *AccountState
 }
 
 // LauncherIntegrationState is the launch-owned status for one launcher integration.
@@ -41,8 +42,11 @@ type LauncherIntegrationState struct {
 
 // RunModelRequest controls how the root launcher resolves the chat model.
 type RunModelRequest struct {
-	ForcePicker bool
-	Policy      *LaunchPolicy
+	ForcePicker          bool
+	Policy               *LaunchPolicy
+	AccountState         *AccountState
+	AccountStateProvider func() *AccountState
+	AccountStateUpdates  func(context.Context) <-chan *AccountState
 }
 
 // LaunchConfirmMode controls confirmation behavior across launch flows.
@@ -117,12 +121,16 @@ func (p LaunchPolicy) missingModelPolicy() missingModelPolicy {
 
 // IntegrationLaunchRequest controls the canonical integration launcher flow.
 type IntegrationLaunchRequest struct {
-	Name           string
-	ModelOverride  string
-	ForceConfigure bool
-	ConfigureOnly  bool
-	ExtraArgs      []string
-	Policy         *LaunchPolicy
+	Name                 string
+	ModelOverride        string
+	ForceConfigure       bool
+	ConfigureOnly        bool
+	Restore              bool
+	ExtraArgs            []string
+	Policy               *LaunchPolicy
+	AccountState         *AccountState
+	AccountStateProvider func() *AccountState
+	AccountStateUpdates  func(context.Context) <-chan *AccountState
 }
 
 var isInteractiveSession = func() bool {
@@ -154,6 +162,46 @@ type ManagedSingleModel interface {
 	Onboard() error
 }
 
+// ManagedModelListConfigurer lets managed single-model integrations receive
+// the launcher's model list while still preserving one primary selected model.
+type ManagedModelListConfigurer interface {
+	ConfigureWithModels(primary string, models []string) error
+}
+
+// ManagedAutodiscoveryIntegration is for managed integrations that do not need
+// a launcher-selected model because the app discovers available models itself.
+type ManagedAutodiscoveryIntegration interface {
+	Paths() []string
+	AutodiscoveredModel() string
+	AutodiscoveryConfigured() bool
+	ConfigureAutodiscovery() error
+	Onboard() error
+}
+
+// ManagedAutodiscoveryCloudIntegration marks an autodiscovery integration whose
+// discovered model catalog depends on the user's local Ollama Cloud auth state.
+type ManagedAutodiscoveryCloudIntegration interface {
+	UsesOllamaCloud() bool
+}
+
+// RestoreHintIntegration can provide a short restore command after launch
+// switches an app into a launch-managed mode.
+type RestoreHintIntegration interface {
+	RestoreHint() string
+}
+
+// ConfigurationSuccessIntegration can print a short message after launcher
+// successfully switches an app into a launch-managed mode.
+type ConfigurationSuccessIntegration interface {
+	ConfigurationSuccessMessage() string
+}
+
+// RestoreSuccessIntegration can print a short message after launcher restores
+// an app back to its default mode.
+type RestoreSuccessIntegration interface {
+	RestoreSuccessMessage() string
+}
+
 // ManagedRuntimeRefresher lets managed integrations refresh any long-lived
 // background runtime after launch rewrites their config.
 type ManagedRuntimeRefresher interface {
@@ -172,6 +220,25 @@ type ManagedInteractiveOnboarding interface {
 	RequiresInteractiveOnboarding() bool
 }
 
+// ManagedModelReadinessSkipper lets managed integrations opt out of local
+// Ollama model readiness checks when the configured runtime is not the local
+// daemon.
+type ManagedModelReadinessSkipper interface {
+	SkipModelReadiness() bool
+}
+
+// RestorableIntegration lets integrations switch back from a launch-managed
+// mode to the application's normal/default mode.
+type RestorableIntegration interface {
+	Restore() error
+}
+
+// SupportedIntegration lets an integration report platform support separately
+// from whether the underlying app binary is installed.
+type SupportedIntegration interface {
+	Supported() error
+}
+
 type modelInfo struct {
 	Name        string
 	Remote      bool
@@ -181,7 +248,7 @@ type modelInfo struct {
 // ModelInfo re-exports launcher model inventory details for callers.
 type ModelInfo = modelInfo
 
-// ModelItem represents a model for selection UIs.
+// ModelItem represents model metadata before selector-only UI state is derived.
 type ModelItem struct {
 	Name            string
 	Description     string
@@ -189,6 +256,15 @@ type ModelItem struct {
 	VRAMBytes       int64
 	ContextLength   int
 	MaxOutputTokens int
+	RequiredPlan    string
+}
+
+// SelectionItem represents a model row after launch has derived selector-only UI state.
+type SelectionItem struct {
+	Name              string
+	Description       string
+	Recommended       bool
+	AvailabilityBadge string
 }
 
 func launchCommandSupportedIntegrationsHelp() string {
@@ -204,6 +280,7 @@ func LaunchCmd(checkServerHeartbeat func(cmd *cobra.Command, args []string) erro
 	var modelFlag string
 	var configFlag bool
 	var yesFlag bool
+	var restoreFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "launch [INTEGRATION] [-- [EXTRA_ARGS...]]",
@@ -222,7 +299,12 @@ Examples:
   ollama launch codex
   ollama launch codex -- -p myprofile (pass extra args to integration)`, launchCommandSupportedIntegrationsHelp()),
 		Args:    cobra.ArbitraryArgs,
-		PreRunE: checkServerHeartbeat,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if restoreFlag || launchCommandCanSkipHeartbeat(args) {
+				return nil
+			}
+			return checkServerHeartbeat(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			policy := defaultLaunchPolicy(isInteractiveSession(), yesFlag)
 			// reset when done to make sure state doens't leak between launches
@@ -251,11 +333,15 @@ Examples:
 			}
 
 			if name == "" {
-				if cmd.Flags().Changed("model") || cmd.Flags().Changed("config") || cmd.Flags().Changed("yes") || len(passArgs) > 0 {
+				if cmd.Flags().Changed("model") || cmd.Flags().Changed("config") || cmd.Flags().Changed("yes") || cmd.Flags().Changed("restore") || len(passArgs) > 0 {
 					return fmt.Errorf("flags and extra args require an integration name, for example: 'ollama launch claude --model qwen3.5'")
 				}
 				runTUI(cmd)
 				return nil
+			}
+
+			if !restoreFlag && launchCommandIsClaudeDesktop(name) {
+				return errClaudeDesktopUnsupported()
 			}
 
 			if modelFlag != "" && isCloudModelName(modelFlag) {
@@ -268,11 +354,20 @@ Examples:
 			}
 
 			headlessYes := yesFlag && !isInteractiveSession()
+			forceConfigure := configFlag || (modelFlag == "" && !headlessYes)
+			if forceConfigure && !configFlag && modelFlag == "" {
+				if _, runner, err := LookupIntegration(name); err == nil {
+					if _, ok := runner.(ManagedAutodiscoveryIntegration); ok {
+						forceConfigure = false
+					}
+				}
+			}
 			err := LaunchIntegration(cmd.Context(), IntegrationLaunchRequest{
 				Name:           name,
 				ModelOverride:  modelFlag,
-				ForceConfigure: configFlag || (modelFlag == "" && !headlessYes),
+				ForceConfigure: forceConfigure,
 				ConfigureOnly:  configFlag,
+				Restore:        restoreFlag,
 				ExtraArgs:      passArgs,
 				Policy:         &policy,
 			})
@@ -285,15 +380,33 @@ Examples:
 
 	cmd.Flags().StringVar(&modelFlag, "model", "", "Model to use")
 	cmd.Flags().BoolVar(&configFlag, "config", false, "Configure without launching")
+	cmd.Flags().BoolVar(&restoreFlag, "restore", false, "Restore an integration to its default profile")
 	cmd.Flags().BoolVarP(&yesFlag, "yes", "y", false, "Automatically answer yes to confirmation prompts")
 	return cmd
 }
 
+func launchCommandCanSkipHeartbeat(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	return launchCommandIsClaudeDesktop(args[0])
+}
+
+func launchCommandIsClaudeDesktop(name string) bool {
+	canonical, _, err := LookupIntegration(name)
+	return err == nil && canonical == claudeDesktopIntegrationName
+}
+
 type launcherClient struct {
-	apiClient       *api.Client
-	modelInventory  []ModelInfo
-	inventoryLoaded bool
-	policy          LaunchPolicy
+	apiClient             *api.Client
+	modelInventory        []ModelInfo
+	inventoryLoaded       bool
+	recommendationsLoaded bool
+	recommendationItems   []ModelItem
+	accountState          *AccountState
+	accountStateProvider  func() *AccountState
+	accountStateUpdates   func(context.Context) <-chan *AccountState
+	policy                LaunchPolicy
 }
 
 func newLauncherClient(policy LaunchPolicy) (*launcherClient, error) {
@@ -331,6 +444,9 @@ func ResolveRunModel(ctx context.Context, req RunModelRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	launchClient.accountState = req.AccountState
+	launchClient.accountStateProvider = req.AccountStateProvider
+	launchClient.accountStateUpdates = req.AccountStateUpdates
 	return launchClient.resolveRunModel(ctx, req)
 }
 
@@ -341,14 +457,33 @@ func LaunchIntegration(ctx context.Context, req IntegrationLaunchRequest) error 
 		return err
 	}
 
+	if name == claudeDesktopIntegrationName && !req.Restore {
+		return errClaudeDesktopUnsupported()
+	}
+
 	policy := launchIntegrationPolicy(req)
+	if req.Restore {
+		return restoreIntegration(name, runner, req)
+	}
 	if policy.Confirm == LaunchConfirmAutoApprove && !isInteractiveSession() && req.ModelOverride == "" {
-		return fmt.Errorf("headless --yes launch for %s requires --model <model>", name)
+		if _, ok := runner.(ManagedAutodiscoveryIntegration); !ok {
+			return fmt.Errorf("headless --yes launch for %s requires --model <model>", name)
+		}
 	}
 
 	launchClient, saved, err := prepareIntegrationLaunch(name, policy)
 	if err != nil {
 		return err
+	}
+	launchClient.accountState = req.AccountState
+	launchClient.accountStateProvider = req.AccountStateProvider
+	launchClient.accountStateUpdates = req.AccountStateUpdates
+
+	if autodiscovery, ok := runner.(ManagedAutodiscoveryIntegration); ok {
+		if err := EnsureIntegrationInstalled(name, runner); err != nil {
+			return err
+		}
+		return launchClient.launchManagedAutodiscoveryIntegration(ctx, name, runner, autodiscovery, saved, req)
 	}
 
 	if managed, ok := runner.(ManagedSingleModel); ok {
@@ -368,6 +503,24 @@ func LaunchIntegration(ctx context.Context, req IntegrationLaunchRequest) error 
 		return launchClient.launchEditorIntegration(ctx, name, runner, editor, saved, req)
 	}
 	return launchClient.launchSingleIntegration(ctx, name, runner, saved, req)
+}
+
+func restoreIntegration(name string, runner Runner, req IntegrationLaunchRequest) error {
+	if req.ModelOverride != "" || req.ConfigureOnly || len(req.ExtraArgs) > 0 {
+		return fmt.Errorf("--restore cannot be combined with --model, --config, or extra args")
+	}
+	restorable, ok := runner.(RestorableIntegration)
+	if !ok {
+		return fmt.Errorf("%s does not support --restore", name)
+	}
+	if err := EnsureIntegrationInstalled(name, runner); err != nil {
+		return err
+	}
+	if err := restorable.Restore(); err != nil {
+		return err
+	}
+	printRestoreSuccess(restorable)
+	return nil
 }
 
 func launchIntegrationPolicy(req IntegrationLaunchRequest) LaunchPolicy {
@@ -420,7 +573,12 @@ func (c *launcherClient) buildLauncherIntegrationState(ctx context.Context, info
 	}
 	var currentModel string
 	var usable bool
-	if managed, ok := integration.spec.Runner.(ManagedSingleModel); ok {
+	if autodiscovery, ok := integration.spec.Runner.(ManagedAutodiscoveryIntegration); ok {
+		currentModel, usable, err = c.launcherManagedAutodiscoveryState(ctx, info.Name, autodiscovery)
+		if err != nil {
+			return LauncherIntegrationState{}, err
+		}
+	} else if managed, ok := integration.spec.Runner.(ManagedSingleModel); ok {
 		currentModel, usable, err = c.launcherManagedModelState(ctx, info.Name, managed)
 		if err != nil {
 			return LauncherIntegrationState{}, err
@@ -482,11 +640,29 @@ func (c *launcherClient) launcherManagedModelState(ctx context.Context, name str
 		return "", false, nil
 	}
 
+	if skips, ok := managed.(ManagedModelReadinessSkipper); ok && skips.SkipModelReadiness() {
+		return current, true, nil
+	}
+
 	usable, err := c.savedModelUsable(ctx, current)
 	if err != nil {
 		return current, false, err
 	}
 	return current, usable, nil
+}
+
+func (c *launcherClient) launcherManagedAutodiscoveryState(ctx context.Context, name string, autodiscovery ManagedAutodiscoveryIntegration) (string, bool, error) {
+	if autodiscovery.AutodiscoveryConfigured() {
+		return autodiscovery.AutodiscoveredModel(), c.managedAutodiscoveryUsable(ctx, autodiscovery), nil
+	}
+
+	cfg, loadErr := loadStoredIntegrationConfig(name)
+	if loadErr == nil {
+		if current := primaryModelFromConfig(cfg); current != "" {
+			return current, false, nil
+		}
+	}
+	return "", false, nil
 }
 
 func (c *launcherClient) resolveRunModel(ctx context.Context, req RunModelRequest) (string, error) {
@@ -563,7 +739,7 @@ func (c *launcherClient) launchEditorIntegration(ctx context.Context, name strin
 	}
 
 	if (needsConfigure || req.ModelOverride != "") && !savedMatchesModels(saved, models) {
-		if err := prepareEditorIntegration(name, runner, editor, models); err != nil {
+		if err := prepareEditorIntegration(name, editor, models); err != nil {
 			return err
 		}
 	}
@@ -587,7 +763,11 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 	}
 
 	if needsConfigure || req.ModelOverride != "" || (current != "" && target != current) || !savedMatchesModels(saved, []string{target}) {
-		if err := prepareManagedSingleIntegration(name, runner, managed, target); err != nil {
+		configureModels, err := c.managedSingleConfigureModels(ctx, managed, target)
+		if err != nil {
+			return err
+		}
+		if err := prepareManagedSingleIntegration(name, managed, target, configureModels); err != nil {
 			return err
 		}
 		if refresher, ok := managed.(ManagedRuntimeRefresher); ok {
@@ -613,15 +793,141 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 	return runIntegration(runner, target, req.ExtraArgs)
 }
 
+func (c *launcherClient) launchManagedAutodiscoveryIntegration(ctx context.Context, name string, runner Runner, autodiscovery ManagedAutodiscoveryIntegration, saved *config.IntegrationConfig, req IntegrationLaunchRequest) error {
+	if req.ModelOverride != "" {
+		return fmt.Errorf("%s discovers models automatically; omit --model", runner)
+	}
+
+	target := autodiscovery.AutodiscoveredModel()
+	if err := c.ensureManagedAutodiscoveryUsable(ctx, autodiscovery, target); err != nil {
+		return err
+	}
+
+	needsConfigure := req.ForceConfigure || req.ConfigureOnly || !autodiscovery.AutodiscoveryConfigured() || !savedMatchesModels(saved, []string{target})
+
+	if needsConfigure {
+		if err := prepareManagedAutodiscoveryIntegration(name, autodiscovery, target); err != nil {
+			return err
+		}
+		if refresher, ok := autodiscovery.(ManagedRuntimeRefresher); ok {
+			if err := refresher.RefreshRuntimeAfterConfigure(); err != nil {
+				return err
+			}
+		}
+	}
+
+	if !managedIntegrationOnboarded(saved, autodiscovery) {
+		if !isInteractiveSession() && managedRequiresInteractiveOnboarding(autodiscovery) {
+			return fmt.Errorf("%s still needs interactive gateway setup; run 'ollama launch %s' in a terminal to finish onboarding", runner, name)
+		}
+		if err := autodiscovery.Onboard(); err != nil {
+			return err
+		}
+	}
+
+	if !printConfigurationSuccess(autodiscovery) {
+		printRestoreHint(autodiscovery)
+	}
+
+	if req.ConfigureOnly {
+		return nil
+	}
+
+	return runIntegration(runner, target, req.ExtraArgs)
+}
+
+func (c *launcherClient) managedAutodiscoveryUsable(ctx context.Context, autodiscovery ManagedAutodiscoveryIntegration) bool {
+	if !managedAutodiscoveryUsesOllamaCloud(autodiscovery) {
+		return true
+	}
+	if disabled, known := cloudStatusDisabled(ctx, c.apiClient); known && disabled {
+		return false
+	}
+	return true
+}
+
+func (c *launcherClient) ensureManagedAutodiscoveryUsable(ctx context.Context, autodiscovery ManagedAutodiscoveryIntegration, label string) error {
+	if !managedAutodiscoveryUsesOllamaCloud(autodiscovery) {
+		return nil
+	}
+	return ensureCloudAuth(ctx, c.apiClient, label)
+}
+
+func managedAutodiscoveryUsesOllamaCloud(autodiscovery ManagedAutodiscoveryIntegration) bool {
+	cloud, ok := autodiscovery.(ManagedAutodiscoveryCloudIntegration)
+	return ok && cloud.UsesOllamaCloud()
+}
+
+func printRestoreHint(integration any) {
+	hint, ok := integration.(RestoreHintIntegration)
+	if !ok {
+		return
+	}
+	if msg := strings.TrimSpace(hint.RestoreHint()); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+	}
+}
+
+func printConfigurationSuccess(integration any) bool {
+	success, ok := integration.(ConfigurationSuccessIntegration)
+	if !ok {
+		return false
+	}
+	if msg := strings.TrimSpace(success.ConfigurationSuccessMessage()); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+		return true
+	}
+	return false
+}
+
+func printRestoreSuccess(integration any) {
+	success, ok := integration.(RestoreSuccessIntegration)
+	if !ok {
+		return
+	}
+	if msg := strings.TrimSpace(success.RestoreSuccessMessage()); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+	}
+}
+
+func (c *launcherClient) managedSingleConfigureModels(ctx context.Context, managed ManagedSingleModel, target string) ([]string, error) {
+	models := []string{target}
+	if _, ok := managed.(ManagedModelListConfigurer); !ok {
+		return models, nil
+	}
+
+	items, _, err := c.loadSelectableModels(ctx, []string{target}, target, "no models available")
+	if err != nil {
+		// Managed integrations that can use a model catalog should still be
+		// configurable with an explicit target even if the broader inventory
+		// cannot be loaded in the moment.
+		//nolint:nilerr
+		return models, nil
+	}
+
+	for _, item := range items {
+		models = append(models, item.Name)
+	}
+	return dedupeModelList(models), nil
+}
+
 func (c *launcherClient) resolveSingleIntegrationTarget(ctx context.Context, runner Runner, current string, req IntegrationLaunchRequest) (string, bool, error) {
 	target := req.ModelOverride
 	needsConfigure := req.ForceConfigure
+	skipReadiness := false
+	if skipper, ok := runner.(ManagedModelReadinessSkipper); ok {
+		skipReadiness = skipper.SkipModelReadiness()
+	}
 
 	if target == "" {
 		target = current
-		usable, err := c.savedModelUsable(ctx, target)
-		if err != nil {
-			return "", false, err
+		usable := skipReadiness && target != ""
+		if !skipReadiness {
+			var err error
+			usable, err = c.savedModelUsable(ctx, target)
+			if err != nil {
+				return "", false, err
+			}
 		}
 		if !usable {
 			needsConfigure = true
@@ -629,13 +935,19 @@ func (c *launcherClient) resolveSingleIntegrationTarget(ctx context.Context, run
 	}
 
 	if needsConfigure {
-		selected, err := c.selectSingleModelWithSelector(ctx, fmt.Sprintf("Select model for %s:", runner), target, DefaultSingleSelector)
+		selected, err := c.selectSingleModelWithSelectorReady(ctx, fmt.Sprintf("Select model for %s:", runner), target, DefaultSingleSelector, !skipReadiness)
 		if err != nil {
 			return "", false, err
 		}
 		target = selected
-	} else if err := c.ensureModelsReady(ctx, []string{target}); err != nil {
-		return "", false, err
+	} else if !skipReadiness {
+		if err := c.ensureModelsReady(ctx, []string{target}); err != nil {
+			return "", false, err
+		}
+	}
+
+	if target == "" {
+		return "", false, nil
 	}
 
 	return target, needsConfigure, nil
@@ -645,7 +957,7 @@ func savedIntegrationOnboarded(saved *config.IntegrationConfig) bool {
 	return saved != nil && saved.Onboarded
 }
 
-func managedIntegrationOnboarded(saved *config.IntegrationConfig, managed ManagedSingleModel) bool {
+func managedIntegrationOnboarded(saved *config.IntegrationConfig, managed any) bool {
 	if !savedIntegrationOnboarded(saved) {
 		return false
 	}
@@ -659,7 +971,7 @@ func managedIntegrationOnboarded(saved *config.IntegrationConfig, managed Manage
 // Most managed integrations treat onboarding as an interactive terminal step.
 // Hermes opts out because its launch-owned onboarding is just bookkeeping, so
 // headless launches should not be blocked once config is already prepared.
-func managedRequiresInteractiveOnboarding(managed ManagedSingleModel) bool {
+func managedRequiresInteractiveOnboarding(managed any) bool {
 	onboarding, ok := managed.(ManagedInteractiveOnboarding)
 	if !ok {
 		return true
@@ -668,7 +980,18 @@ func managedRequiresInteractiveOnboarding(managed ManagedSingleModel) bool {
 }
 
 func (c *launcherClient) selectSingleModelWithSelector(ctx context.Context, title, current string, selector SingleSelector) (string, error) {
-	if selector == nil {
+	return c.selectSingleModelWithSelectorReady(ctx, title, current, selector, true)
+}
+
+func (c *launcherClient) latestAccountState() *AccountState {
+	if c.accountStateProvider != nil {
+		return c.accountStateProvider()
+	}
+	return c.accountState
+}
+
+func (c *launcherClient) selectSingleModelWithSelectorReady(ctx context.Context, title, current string, selector SingleSelector, ensureReady bool) (string, error) {
+	if selector == nil && DefaultSingleSelectorWithUpdates == nil {
 		return "", fmt.Errorf("no selector configured")
 	}
 
@@ -677,40 +1000,88 @@ func (c *launcherClient) selectSingleModelWithSelector(ctx context.Context, titl
 		return "", err
 	}
 
-	selected, err := selector(title, items, current)
-	if err != nil {
-		return "", err
+	for {
+		accountState := c.latestAccountState()
+		selectionItems := SelectionItemsWithAccountState(items, accountState)
+		var updates <-chan []SelectionItem
+		if DefaultSingleSelectorWithUpdates != nil {
+			updates = c.selectionItemUpdates(ctx, items, accountState)
+		}
+		selected, err := runSingleSelector(title, selectionItems, current, updates, selector)
+		if err != nil {
+			return "", err
+		}
+		if selected == "" {
+			return "", ErrCancelled
+		}
+		if ensureReady {
+			if err := c.ensureModelsReady(ctx, []string{selected}); err != nil {
+				if errors.Is(err, errUpgradeCancelled) {
+					current = selected
+					continue
+				}
+				return "", err
+			}
+		}
+		return selected, nil
 	}
-	if err := c.ensureModelsReady(ctx, []string{selected}); err != nil {
-		return "", err
-	}
-	return selected, nil
 }
 
 func (c *launcherClient) selectMultiModelsForIntegration(ctx context.Context, runner Runner, preChecked []string) ([]string, error) {
-	if DefaultMultiSelector == nil {
+	if DefaultMultiSelector == nil && DefaultMultiSelectorWithUpdates == nil {
 		return nil, fmt.Errorf("no selector configured")
 	}
 
 	current := firstModel(preChecked)
-
 	items, orderedChecked, err := c.loadSelectableModels(ctx, preChecked, current, "no models available")
 	if err != nil {
 		return nil, err
 	}
 
-	selected, err := DefaultMultiSelector(fmt.Sprintf("Select models for %s:", runner), items, orderedChecked)
-	if err != nil {
-		return nil, err
+	for {
+		accountState := c.latestAccountState()
+		selectionItems := SelectionItemsWithAccountState(items, accountState)
+		var updates <-chan []SelectionItem
+		if DefaultMultiSelectorWithUpdates != nil {
+			updates = c.selectionItemUpdates(ctx, items, accountState)
+		}
+		selected, err := runMultiSelector(fmt.Sprintf("Select models for %s:", runner), selectionItems, orderedChecked, updates)
+		if err != nil {
+			return nil, err
+		}
+		accepted, skipped, err := c.selectReadyModelsForSave(ctx, selected)
+		if err != nil {
+			if errors.Is(err, errUpgradeCancelled) {
+				orderedChecked = append([]string(nil), selected...)
+				continue
+			}
+			return nil, err
+		}
+		for _, skip := range skipped {
+			fmt.Fprintf(os.Stderr, "Skipped %s: %s\n", skip.model, skip.reason)
+		}
+		return accepted, nil
 	}
-	accepted, skipped, err := c.selectReadyModelsForSave(ctx, selected)
-	if err != nil {
-		return nil, err
+}
+
+func runSingleSelector(title string, items []SelectionItem, current string, updates <-chan []SelectionItem, fallback SingleSelector) (string, error) {
+	if DefaultSingleSelectorWithUpdates != nil {
+		return DefaultSingleSelectorWithUpdates(title, items, current, updates)
 	}
-	for _, skip := range skipped {
-		fmt.Fprintf(os.Stderr, "Skipped %s: %s\n", skip.model, skip.reason)
+	if fallback == nil {
+		return "", fmt.Errorf("no selector configured")
 	}
-	return accepted, nil
+	return fallback(title, items, current)
+}
+
+func runMultiSelector(title string, items []SelectionItem, preChecked []string, updates <-chan []SelectionItem) ([]string, error) {
+	if DefaultMultiSelectorWithUpdates != nil {
+		return DefaultMultiSelectorWithUpdates(title, items, preChecked, updates)
+	}
+	if DefaultMultiSelector == nil {
+		return nil, fmt.Errorf("no selector configured")
+	}
+	return DefaultMultiSelector(title, items, preChecked)
 }
 
 func (c *launcherClient) loadSelectableModels(ctx context.Context, preChecked []string, current, emptyMessage string) ([]ModelItem, []string, error) {
@@ -732,16 +1103,24 @@ func (c *launcherClient) loadSelectableModels(ctx context.Context, preChecked []
 }
 
 func (c *launcherClient) recommendations(ctx context.Context) []ModelItem {
+	if c.recommendationsLoaded {
+		return append([]ModelItem(nil), c.recommendationItems...)
+	}
+
 	recommendations, err := c.requestRecommendations(ctx)
 	if err != nil || len(recommendations) == 0 {
 		// Fail open: recommendation issues should not block launch flows.
 		// Fall back to built-in recommendations until server data is available.
 		fallback := append([]ModelItem(nil), recommendedModels...)
 		setDynamicCloudModelLimits(cloudModelLimitsFromRecommendations(fallback))
-		return fallback
+		c.recommendationItems = fallback
+		c.recommendationsLoaded = true
+		return append([]ModelItem(nil), fallback...)
 	}
 	setDynamicCloudModelLimits(cloudModelLimitsFromRecommendations(recommendations))
-	return recommendations
+	c.recommendationItems = recommendations
+	c.recommendationsLoaded = true
+	return append([]ModelItem(nil), recommendations...)
 }
 
 func (c *launcherClient) requestRecommendations(ctx context.Context) ([]ModelItem, error) {
@@ -779,6 +1158,7 @@ func (c *launcherClient) requestRecommendations(ctx context.Context) ([]ModelIte
 			VRAMBytes:       rec.VRAMBytes,
 			ContextLength:   rec.ContextLength,
 			MaxOutputTokens: rec.MaxOutputTokens,
+			RequiredPlan:    strings.TrimSpace(rec.RequiredPlan),
 		})
 	}
 
@@ -796,6 +1176,9 @@ func (c *launcherClient) ensureModelsReady(ctx context.Context, models []string)
 		isCloudModel := isCloudModelName(model)
 		if isCloudModel {
 			cloudModels[model] = true
+			if err := c.ensureCloudModelAccess(ctx, model); err != nil {
+				return err
+			}
 		}
 		if err := showOrPullWithPolicy(ctx, c.apiClient, model, c.policy.missingModelPolicy(), isCloudModel); err != nil {
 			return err
@@ -829,6 +1212,9 @@ func (c *launcherClient) selectReadyModelsForSave(ctx context.Context, selected 
 
 	for _, model := range selected {
 		if err := c.ensureModelsReady(ctx, []string{model}); err != nil {
+			if errors.Is(err, errUpgradeCancelled) {
+				return nil, nil, err
+			}
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, nil, err
 			}
@@ -845,6 +1231,9 @@ func (c *launcherClient) selectReadyModelsForSave(ctx context.Context, selected 
 }
 
 func skippedModelReason(model string, err error) string {
+	if errors.Is(err, errUpgradeCancelled) {
+		return "upgrade was cancelled"
+	}
 	if errors.Is(err, ErrCancelled) {
 		if isCloudModelName(model) {
 			return "sign in was cancelled"

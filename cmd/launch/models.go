@@ -16,7 +16,6 @@ import (
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/cmd/config"
-	"github.com/ollama/ollama/cmd/internal/fileutil"
 	"github.com/ollama/ollama/format"
 	internalcloud "github.com/ollama/ollama/internal/cloud"
 	"github.com/ollama/ollama/internal/modelref"
@@ -175,21 +174,26 @@ func ensureAuth(ctx context.Context, client *api.Client, cloudModels map[string]
 	if len(selectedCloudModels) == 0 {
 		return nil
 	}
+	return ensureCloudAuth(ctx, client, strings.Join(selectedCloudModels, ", "))
+}
+
+func ensureCloudAuth(ctx context.Context, client *api.Client, modelList string) error {
 	if disabled, known := cloudStatusDisabled(ctx, client); known && disabled {
 		return errors.New(internalcloud.DisabledError("remote inference is unavailable"))
 	}
 
-	user, err := client.Whoami(ctx)
+	user, err := whoamiWithTimeout(ctx, client)
 	if err == nil && user != nil && user.Name != "" {
 		return nil
 	}
 
 	var aErr api.AuthorizationError
 	if !errors.As(err, &aErr) || aErr.SigninURL == "" {
-		return err
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("%s requires sign in", modelList)
 	}
-
-	modelList := strings.Join(selectedCloudModels, ", ")
 
 	if DefaultSignIn != nil {
 		_, err := DefaultSignIn(modelList, aErr.SigninURL)
@@ -233,7 +237,7 @@ func ensureAuth(ctx context.Context, client *api.Client, cloudModels map[string]
 			fmt.Fprintf(os.Stderr, "\r\033[90mwaiting for sign in to complete... %s\033[0m", spinnerFrames[frame%len(spinnerFrames)])
 
 			if frame%10 == 0 {
-				u, err := client.Whoami(ctx)
+				u, err := whoamiWithTimeout(ctx, client)
 				if err == nil && u != nil && u.Name != "" {
 					fmt.Fprintf(os.Stderr, "\r\033[K\033[A\r\033[K\033[1msigned in:\033[0m %s\n", u.Name)
 					return nil
@@ -289,12 +293,7 @@ func pullMissingModel(ctx context.Context, client *api.Client, model string) err
 }
 
 // prepareEditorIntegration persists models and applies editor-managed config files.
-func prepareEditorIntegration(name string, runner Runner, editor Editor, models []string) error {
-	if ok, err := confirmConfigEdit(runner, editor.Paths()); err != nil {
-		return err
-	} else if !ok {
-		return errCancelled
-	}
+func prepareEditorIntegration(name string, editor Editor, models []string) error {
 	if err := editor.Edit(models); err != nil {
 		return fmt.Errorf("setup failed: %w", err)
 	}
@@ -304,13 +303,15 @@ func prepareEditorIntegration(name string, runner Runner, editor Editor, models 
 	return nil
 }
 
-func prepareManagedSingleIntegration(name string, runner Runner, managed ManagedSingleModel, model string) error {
-	if ok, err := confirmConfigEdit(runner, managed.Paths()); err != nil {
-		return err
-	} else if !ok {
-		return errCancelled
+func prepareManagedSingleIntegration(name string, managed ManagedSingleModel, model string, models []string) error {
+	models = dedupeModelList(append([]string{model}, models...))
+	var err error
+	if withModels, ok := managed.(ManagedModelListConfigurer); ok {
+		err = withModels.ConfigureWithModels(model, models)
+	} else {
+		err = managed.Configure(model)
 	}
-	if err := managed.Configure(model); err != nil {
+	if err != nil {
 		return fmt.Errorf("setup failed: %w", err)
 	}
 	if err := config.SaveIntegration(name, []string{model}); err != nil {
@@ -319,18 +320,14 @@ func prepareManagedSingleIntegration(name string, runner Runner, managed Managed
 	return nil
 }
 
-func confirmConfigEdit(runner Runner, paths []string) (bool, error) {
-	if len(paths) == 0 {
-		return true, nil
+func prepareManagedAutodiscoveryIntegration(name string, autodiscovery ManagedAutodiscoveryIntegration, model string) error {
+	if err := autodiscovery.ConfigureAutodiscovery(); err != nil {
+		return fmt.Errorf("setup failed: %w", err)
 	}
-
-	fmt.Fprintf(os.Stderr, "This will modify your %s configuration:\n", runner)
-	for _, path := range paths {
-		fmt.Fprintf(os.Stderr, "  %s\n", path)
+	if err := config.SaveIntegration(name, []string{model}); err != nil {
+		return fmt.Errorf("failed to save: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Backups will be saved to %s/\n\n", fileutil.BackupDir())
-
-	return ConfirmPrompt("Proceed?")
+	return nil
 }
 
 // buildModelList merges existing models with recommendations for selection UIs.
@@ -345,9 +342,11 @@ func buildModelListWithRecommendations(existing []modelInfo, recommendations []M
 	var hasLocalModel, hasCloudModel bool
 
 	recDesc := make(map[string]string)
+	recByName := make(map[string]ModelItem)
 	for _, rec := range recommendations {
 		recommended[rec.Name] = true
 		recDesc[rec.Name] = rec.Description
+		recByName[rec.Name] = rec
 	}
 
 	for _, m := range existing {
@@ -361,6 +360,9 @@ func buildModelListWithRecommendations(existing []modelInfo, recommendations []M
 		displayName := strings.TrimSuffix(m.Name, ":latest")
 		existingModels[displayName] = true
 		item := ModelItem{Name: displayName, Recommended: recommended[displayName], Description: recDesc[displayName]}
+		if rec, ok := recByName[displayName]; ok {
+			item = copyModelRecommendationFields(displayName, rec)
+		}
 		items = append(items, item)
 	}
 
@@ -467,6 +469,12 @@ func buildModelListWithRecommendations(existing []modelInfo, recommendations []M
 	}
 
 	return items, preChecked, existingModels, cloudModels
+}
+
+func copyModelRecommendationFields(name string, rec ModelItem) ModelItem {
+	rec.Name = name
+	rec.Recommended = true
+	return rec
 }
 
 // isCloudModelName reports whether the model name has an explicit cloud source.

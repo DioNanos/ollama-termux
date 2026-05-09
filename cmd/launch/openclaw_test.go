@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/cmd/internal/fileutil"
 )
 
 func TestOpenclawIntegration(t *testing.T) {
@@ -1154,7 +1155,7 @@ func TestOpenclawEdit_BackupCreated(t *testing.T) {
 	setTestHome(t, tmpDir)
 	configDir := filepath.Join(tmpDir, ".openclaw")
 	configPath := filepath.Join(configDir, "openclaw.json")
-	backupDir := filepath.Join(os.TempDir(), "ollama-backups")
+	backupDir := fileutil.BackupDir()
 
 	os.MkdirAll(configDir, 0o755)
 	uniqueMarker := fmt.Sprintf("test-marker-%d", os.Getpid())
@@ -1165,7 +1166,7 @@ func TestOpenclawEdit_BackupCreated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	backups, _ := filepath.Glob(filepath.Join(backupDir, "openclaw.json.*"))
+	backups, _ := filepath.Glob(filepath.Join(backupDir, "openclaw", "openclaw.json.*"))
 	foundBackup := false
 	for _, backup := range backups {
 		data, _ := os.ReadFile(backup)
@@ -2131,7 +2132,7 @@ func TestPrintOpenclawReady(t *testing.T) {
 		buf.ReadFrom(r)
 
 		output := buf.String()
-		if !strings.Contains(output, "localhost:9999") {
+		if !strings.Contains(output, "127.0.0.1:9999") {
 			t.Errorf("expected port 9999 in output, got:\n%s", output)
 		}
 		if strings.Contains(output, "#token=") {
