@@ -109,24 +109,28 @@ var integrationSpecs = []*IntegrationSpec{
 		Description: "Self-improving AI agent by Nous Research — Termux supported",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
-				_, err := exec.LookPath("hermes")
-				return err == nil
+				return (&Hermes{}).installed()
 			},
-			URL:     "https://github.com/NousResearch/hermes-agent",
-			Command: []string{"curl", "-fsSL", "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh", "|", "bash"},
+			EnsureInstalled: func() error {
+				return (&Hermes{}).ensureInstalled()
+			},
+			URL: "https://hermes-agent.nousresearch.com/docs/getting-started/installation/",
 		},
 	},
 	{
 		Name:        "pi",
 		Runner:      &Pi{},
-		Description: "Pi Coding Agent — npm-based AI agent toolkit",
+		Description: "Minimal AI agent toolkit with plugin support",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
 				_, err := exec.LookPath("pi")
 				return err == nil
 			},
-			URL:     "https://www.npmjs.com/package/@mariozechner/pi-coding-agent",
-			Command: []string{"npm", "install", "-g", "@mariozechner/pi-coding-agent"},
+			EnsureInstalled: func() error {
+				_, err := ensurePiInstalled()
+				return err
+			},
+			Command: []string{"npm", "install", "-g", "@mariozechner/pi-coding-agent@latest"},
 		},
 	},
 	{
