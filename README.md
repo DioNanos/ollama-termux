@@ -20,141 +20,77 @@ behavior.
 
 - Upstream Ollama source tree and MIT license
 - Upstream version lineage, published as `v<upstream>-termux.N`
-- Standard `ollama` CLI and server behavior where Termux-specific changes are
-  not required
+- Standard `ollama` CLI and server behavior
 
 ### What This Fork Changes
 
-- Keeps only the launcher integrations we actually support on Termux:
-  **Codex** (primary), **Qwen Code** (secondary), and **Claude Code**
-  (frozen @2.1.112)
-- Uses `termux-open-url` when browser/OAuth flows need to open URLs on Android
+- Keeps only the launcher integrations we support on Termux:
+  **Codex VL** (primary), **Codex**, **Qwen Code**, **Claude Code** (frozen),
+  **Hermes Agent**, **Pi Coding Agent**
+- Uses `termux-open-url` for browser/OAuth flows
 - Tunes CPU thread selection, memory heuristics, flash attention defaults, and
   context limits for modern phones
 - Ships prebuilt Android ARM64 release assets through GitHub Releases and
   installs them through the npm package
 
-### What This Fork Does Not Claim
+### Termux-Specific Runtime
 
-- This is **not** a minimal patch port like `codex-termux`
-- This is **not** a drop-in replacement for upstream Ollama on desktop/server
-  systems
-
-### Experimental
-
-- **Vulkan on Termux** (opt-in): the runner can route `dlopen("libvulkan.so")`
-  through the Android system loader (`/system/lib64`), which has namespace
-  access to the vendor GPU ICD at `/vendor/lib64/hw/vulkan.*.so` that Termux
-  processes are normally blocked from. Verified on Pixel 9 Pro / Mali-G715.
-  Build with `BUILD_VULKAN=1 ./scripts/build_termux.sh`, enable at runtime
-  with `OLLAMA_VULKAN=1`. See
-  [docs/VULKAN_ANDROID_LOADER.md](./docs/VULKAN_ANDROID_LOADER.md) for the
-  loader mechanism, and [docs/BENCHMARKS.md](./docs/BENCHMARKS.md) for
-  CPU-vs-Vulkan throughput on Pixel 9 Pro. Highlights on Mali-G715:
-  `gemma4:e2b` 2.44 → **7.37 tok/s** (3.0×), `gemma4:e4b` 1.81 →
-  **4.45 tok/s** (2.5×), `medgemma:latest` 2.43 → **3.96 tok/s** (1.6×).
-  All models reach 100% layer offload.
-
----
-
-## Termux-Specific Behavior
-
-The current fork-only behavior is intentional and user-visible:
-
-- Launcher integrations: Codex (primary), Qwen Code (secondary),
-  Claude Code (frozen @2.1.112)
-- Codex launched with `--dangerously-bypass-approvals-and-sandbox`
-- Qwen launched with `--approval-mode yolo` and routed through the
-  local Ollama OpenAI-compat `/v1` endpoint
-- Claude launched with `--dangerously-skip-permissions`
-- Android-aware memory heuristic based on `MemTotal`
-- Big-core detection via `/sys/devices/system/cpu/.../cpufreq`
-- Context ladder capped for mobile RAM tiers
-- Flash attention enabled automatically on CPU-only mobile targets
-- Runner prepends `/system/lib64` to `LD_LIBRARY_PATH` so an optional
-  `ggml-vulkan` backend can reach the Android vendor GPU driver
-
-These are fork behaviors, not upstream behaviors.
-
----
-
-## Requirements
-
-- Android device running Termux
-- ARM64 CPU
-- Node.js `>=18`
-- Enough free space for the downloaded release tarball and extracted libraries
-
-This package is intended for **Termux on Android ARM64 only**.
+- RAM detection: 60-75% of MemTotal (Android-aware heuristic)
+- Thread limit: big cores only (cpufreq-based detection)
+- Flash attention: auto-enabled on CPU-only for memory savings
+- Context window: auto-limited based on available RAM tiers
+- Vulkan: `/system/lib64` loader path for Android GPU access
+- `LD_LIBRARY_PATH` fix for runner subprocess on Termux
 
 ---
 
 ## Installation
 
-### 1. Install the fork
-
 ```bash
 pkg update && pkg upgrade -y
 pkg install nodejs-lts -y
 
-npm install -g @mmmbuto/ollama-termux
+npm install -g @mmmbuto/ollama-termux@0.23.2-termux.1
 ```
 
 The npm package is an installer wrapper. During `postinstall`, it downloads the
-matching GitHub Release asset for the published package version, verifies the
-SHA256 checksum when available, and installs:
+matching GitHub Release asset, verifies SHA256, and installs `bin/ollama` +
+`lib/ollama/*.so` under the Termux prefix.
 
-- `bin/ollama` as a Termux-safe launcher wrapper
-- `lib/ollama/ollama` as the native Ollama binary
-- `lib/ollama/*.so`
+---
 
-The launcher wrapper sets the Termux library path before starting the native
-binary, so `ollama` works from clean shells and scripts without relying on a
-user-specific `.zshrc`.
+## Supported Integrations
 
-### 2. Install supported coding CLIs
+| Order | CLI | Package | Status |
+|-------|-----|---------|--------|
+| 1 | **Codex VL** | `@mmmbuto/codex-vl` | Primary — Vivling-enhanced fork |
+| 2 | **Codex** | `@mmmbuto/codex-cli-termux` | Secondary |
+| 3 | **Qwen Code** | `@mmmbuto/qwen-code-termux` | OpenAI-compat via local Ollama |
+| 4 | **Claude Code** | `@anthropic-ai/claude-code@2.1.112` | Frozen (Anthropic dropped Termux) |
+| 5 | **Hermes Agent** | curl install script | Official Termux support |
+| 6 | **Pi Coding Agent** | `@mariozechner/pi-coding-agent` | npm-based |
 
-Launcher priority on Termux is **Codex (primary) → Qwen (secondary) → Claude (frozen)**.
+Install the CLIs you need:
 
 ```bash
-# Codex — primary (our Termux fork)
+# Codex VL — primary (our Vivling fork)
+npm install -g @mmmbuto/codex-vl
+
+# Codex — secondary (our Termux fork)
 npm install -g @mmmbuto/codex-cli-termux
 
-# Qwen Code — secondary (our Termux fork)
+# Qwen Code
 npm install -g @mmmbuto/qwen-code-termux
 
-# Claude Code — frozen at 2.1.112 (Anthropic dropped Termux after)
+# Claude Code — frozen, do NOT upgrade past 2.1.112
 npm install -g @anthropic-ai/claude-code@2.1.112
+
+# Hermes Agent
+curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+
+# Pi Coding Agent
+npm install -g @mariozechner/pi-coding-agent
 ```
-
-Important:
-
-- **Codex** is the recommended coding agent on Termux. Fork ships
-  Android-tuned runtime and is published at `@mmmbuto/codex-cli-termux`.
-- **Qwen Code** is the secondary agent, also a Termux-native fork
-  (`@mmmbuto/qwen-code-termux`). Routes through Ollama via the
-  OpenAI-compatible endpoint.
-- **Claude Code** is **frozen** at `2.1.112` — the last version that
-  still ships native Termux support. `@anthropic-ai/claude-code@2.1.113`
-  and newer no longer work on Termux. We keep Claude in the launcher
-  for users already on the frozen pin; do not upgrade.
-- `ollama-termux` targets these Termux package paths:
-  - Codex:  `/data/data/com.termux/files/usr/lib/node_modules/@mmmbuto/codex-cli-termux`
-  - Qwen:   `/data/data/com.termux/files/usr/lib/node_modules/@mmmbuto/qwen-code-termux`
-  - Claude: `/data/data/com.termux/files/usr/lib/node_modules/@anthropic-ai/claude-code`
-
-### 3. Verify
-
-```bash
-ollama --version
-ollama serve
-```
-
-Links:
-
-- npm: https://www.npmjs.com/package/@mmmbuto/ollama-termux
-- Releases: https://github.com/DioNanos/ollama-termux/releases
-- Upstream: https://github.com/ollama/ollama
 
 ---
 
@@ -164,110 +100,56 @@ Links:
 # Start Ollama
 ollama serve &
 
-# Pull the recommended local models
+# Pull recommended local models
 ollama pull qwen3.5:4b
 ollama pull gemma4:e4b
 
-# Launch Codex (primary) through Ollama with gemma4:e4b
-ollama launch codex --model gemma4:e4b
-
-# Launch Qwen Code (secondary) through Ollama with gemma4:e2b
+# Launch integrations
+ollama launch codex-vl --model gemma4:e4b
+ollama launch codex --model qwen3.5:4b
 ollama launch qwen --model gemma4:e2b
-
-# Launch Claude Code (frozen @2.1.112) through Ollama with qwen3.5:4b
 ollama launch claude --model qwen3.5:4b
+ollama launch hermes
+ollama launch pi
 ```
 
 ---
 
-## Build And Release
-
-### Build locally on Linux
+## Build
 
 ```bash
 export NDK_ROOT=~/android-ndk/android-ndk-r27c
 ./scripts/build_termux.sh
 ```
 
-Expected output:
-
-- `dist/ollama-termux-<version>-android-arm64.tar.gz`
-- `dist/ollama-termux-<version>-android-arm64.tar.gz.sha256`
-
-### Release contract
-
-Every published npm version must have a matching GitHub Release with these two
-assets:
-
-- `ollama-termux-<version>-android-arm64.tar.gz`
-- `ollama-termux-<version>-android-arm64.tar.gz.sha256`
-
-The installer depends on that contract. If the release asset is missing, the
-npm package is not considered publish-ready.
+Output: `dist/ollama-termux-<version>-android-arm64.tar.gz`
 
 See [docs/BUILDING.md](./docs/BUILDING.md) for the full cross-build flow.
 
 ---
 
-## Device Notes
+## Devices
 
-This fork is tuned for recent ARM64 phones such as:
+Tuned for modern ARM64 phones:
 
 - Pixel 9 Pro / Tensor G4
-- Pixel 10 Pro / Tensor G5
 - Galaxy S24+ / Snapdragon 8 Gen 3
 - Galaxy S25 Ultra / Snapdragon 8 Elite
 
-The shipped CPU backends target:
-
-- `armv8.0` fallback
-- `armv8.2 + dotprod + fp16`
-- `armv8.6 + dotprod + fp16 + i8mm + sve2`
-
-An optional `ggml-vulkan` backend is produced when the release is built with
-`BUILD_VULKAN=1`. At runtime the fork prepends `/system/lib64` to
-`LD_LIBRARY_PATH` so the Android system Vulkan loader is used; that loader
-has access to the vendor GPU driver that Termux processes cannot reach
-directly (`/vendor/lib64/hw/vulkan.mali.so` on Tensor, `vulkan.adreno.so` on
-Qualcomm). Runtime gate: `OLLAMA_VULKAN=1`.
-
-Backend selection is done at runtime by the ggml layer.
+CPU backends: `armv8.0`, `armv8.2+dotprod+fp16`, `armv8.6+dotprod+fp16+i8mm+sve2`.
+Optional Vulkan GPU backend (`BUILD_VULKAN=1`, runtime `OLLAMA_VULKAN=1`).
 
 ---
 
-## Validation Status
+## Links
 
-Current public release target: **`v0.22.1-termux.1`** on npm (`next`) and GitHub Releases.
-
-Current stable npm release remains **`v0.21.3-termux.2`** on `latest` until device validation promotes `next`.
-
-On-device validation on Pixel 9 Pro (Tensor G4 / Mali-G715):
-
-- ✅ CPU inference across `armv8.0/8.2/8.6` backends
-- ✅ Vulkan GPU offload — 100% layer offload on `gemma4:e2b`, `gemma4:e4b`,
-  `medgemma:latest` (see [docs/BENCHMARKS.md](./docs/BENCHMARKS.md))
-- ✅ Codex launcher (`@mmmbuto/codex-cli-termux`) via OpenAI-compat `/v1`
-- ✅ Qwen Code launcher (`@mmmbuto/qwen-code-termux`) via OpenAI-compat `/v1`
-- ✅ Claude Code launcher (`@anthropic-ai/claude-code@2.1.112`, frozen)
-
-Release flow for `v0.22.1-termux.1` and later:
-
-- queue Forge build/package validation on `mgm` from `develop`
-- follow that queued build until completion before touching `main`
-- verify public-release safety before any public push
-- fast-forward clean `main`, then publish GitHub Release and npm package
-
-GitHub release pipeline (`release-termux` + `npm-publish`) produces and publishes:
-
-- `ollama-termux-<version>-android-arm64.tar.gz`
-- `ollama-termux-<version>-android-arm64.tar.gz.sha256`
-- npm tarball with `install.js` and doc set
+- npm: https://www.npmjs.com/package/@mmmbuto/ollama-termux
+- Releases: https://github.com/DioNanos/ollama-termux/releases
+- Upstream: https://github.com/ollama/ollama
 
 ---
 
 ## License
 
-This project is distributed under the MIT license.
-
-- Original upstream work: [ollama/ollama](https://github.com/ollama/ollama)
-- Termux fork work: Davide A. Gugliemi
+MIT — original upstream [ollama/ollama](https://github.com/ollama/ollama).
+Termux fork work: DioNanos.
