@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ollama/ollama/envconfig"
 	"golang.org/x/mod/semver"
 )
 

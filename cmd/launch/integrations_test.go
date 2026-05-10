@@ -95,7 +95,7 @@ func TestIntegrationRegistry(t *testing.T) {
 func TestHiddenIntegrationsExcludedFromVisibleLists(t *testing.T) {
 	for _, info := range ListIntegrationInfos() {
 		switch info.Name {
-		case "cline", "vscode", "kimi", "openclaw", "droid", "opencode", "copilot", "pi", "hermes":
+		case "cline", "vscode", "kimi", "openclaw", "droid", "opencode", "copilot":
 			t.Fatalf("unsupported integration %q should not appear in ListIntegrationInfos", info.Name)
 		}
 	}
@@ -884,7 +884,7 @@ func TestPrepareEditorIntegration_SavesOnlyAfterSuccessfulEdit(t *testing.T) {
 	}
 
 	editor := &stubEditorRunner{editErr: errors.New("boom")}
-	err := prepareEditorIntegration("claude", editor, editor, []string{"new-model"})
+	err := prepareEditorIntegration("claude", editor, []string{"new-model"})
 	if err == nil || !strings.Contains(err.Error(), "setup failed") {
 		t.Fatalf("expected setup failure, got %v", err)
 	}

@@ -3,9 +3,12 @@ package launch
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"slices"
 	"strings"
+
+	"github.com/ollama/ollama/envconfig"
 )
 
 // IntegrationInstallSpec describes how launcher should detect and guide installation.
@@ -64,6 +67,19 @@ var integrationSpecs = []*IntegrationSpec{
 		},
 	},
 	{
+		Name:        "claude-desktop",
+		Runner:      &ClaudeDesktop{},
+		Aliases:     []string{"claude-app"},
+		Description: "Claude Desktop with Ollama Cloud",
+		Hidden:      true,
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				return claudeDesktopInstalled()
+			},
+			URL: "https://claude.com/download",
+		},
+	},
+	{
 		Name:        "codex-vl",
 		Runner:      &CodexVL{},
 		Description: "Codex VL — Vivling-enhanced Codex fork (primary on Termux)",
@@ -76,7 +92,6 @@ var integrationSpecs = []*IntegrationSpec{
 			Command: []string{"npm", "install", "-g", "@mmmbuto/codex-vl"},
 		},
 	},
-	{
 	{
 		Name:        "codex",
 		Runner:      &Codex{},
@@ -130,11 +145,10 @@ var integrationSpecs = []*IntegrationSpec{
 				_, err := ensurePiInstalled()
 				return err
 			},
+			URL:     "https://www.npmjs.com/package/@mariozechner/pi-coding-agent",
 			Command: []string{"npm", "install", "-g", "@mariozechner/pi-coding-agent@latest"},
 		},
 	},
-	{
-
 }
 
 var integrationSpecsByName map[string]*IntegrationSpec
