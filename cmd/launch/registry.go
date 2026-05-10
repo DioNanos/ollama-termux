@@ -3,7 +3,6 @@ package launch
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 	"slices"
 	"strings"
@@ -36,16 +35,15 @@ type IntegrationInfo struct {
 	Description string
 }
 
-var launcherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude", "hermes", "pi"}
+var launcherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude", "hermes"}
 
-var termuxLauncherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude", "hermes", "pi"}
+var termuxLauncherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude", "hermes"}
 
 var termuxSupportedIntegrationNames = map[string]bool{
 	"claude":   true,
 	"codex":    true,
 	"codex-vl": true,
 	"hermes":   true,
-	"pi":       true,
 	"qwen":     true,
 }
 
@@ -130,23 +128,6 @@ var integrationSpecs = []*IntegrationSpec{
 				return (&Hermes{}).ensureInstalled()
 			},
 			URL: "https://hermes-agent.nousresearch.com/docs/getting-started/installation/",
-		},
-	},
-	{
-		Name:        "pi",
-		Runner:      &Pi{},
-		Description: "Minimal AI agent toolkit with plugin support",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, err := exec.LookPath("pi")
-				return err == nil
-			},
-			EnsureInstalled: func() error {
-				_, err := ensurePiInstalled()
-				return err
-			},
-			URL:     "https://www.npmjs.com/package/@mariozechner/pi-coding-agent",
-			Command: []string{"npm", "install", "-g", "@mariozechner/pi-coding-agent@latest"},
 		},
 	},
 }

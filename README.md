@@ -26,7 +26,7 @@ behavior.
 
 - Keeps only the launcher integrations we support on Termux:
   **Codex VL** (primary), **Codex**, **Qwen Code**, **Claude Code** (frozen),
-  **Hermes Agent**, **Pi Coding Agent**
+  **Hermes Agent**
 - Uses `termux-open-url` for browser/OAuth flows
 - Tunes CPU thread selection, memory heuristics, flash attention defaults, and
   context limits for modern phones
@@ -68,7 +68,6 @@ matching GitHub Release asset, verifies SHA256, and installs `bin/ollama` +
 | 3 | **Qwen Code** | `@mmmbuto/qwen-code-termux` | OpenAI-compat via local Ollama |
 | 4 | **Claude Code** | `@anthropic-ai/claude-code@2.1.112` | Frozen (Anthropic dropped Termux) |
 | 5 | **Hermes Agent** | curl install script | Official Termux support |
-| 6 | **Pi Coding Agent** | `@mariozechner/pi-coding-agent` | npm-based |
 
 Install the CLIs you need:
 
@@ -87,9 +86,6 @@ npm install -g @anthropic-ai/claude-code@2.1.112
 
 # Hermes Agent
 curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
-
-# Pi Coding Agent
-npm install -g @mariozechner/pi-coding-agent
 ```
 
 ---
@@ -110,7 +106,7 @@ ollama launch codex --model qwen3.5:4b
 ollama launch qwen --model gemma4:e2b
 ollama launch claude --model qwen3.5:4b
 ollama launch hermes
-ollama launch pi
+
 ```
 
 ---
