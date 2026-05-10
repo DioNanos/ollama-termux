@@ -391,10 +391,6 @@ func EnsureIntegrationInstalled(name string, runner Runner) error {
 		}
 	}
 
-	if integration.spec.Name == "pool" && poolsideGOOS == "windows" {
-		return poolsideUnsupportedError()
-	}
-
 	if integration.installed {
 		return nil
 	}
