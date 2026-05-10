@@ -99,7 +99,7 @@ var integrationSpecs = []*IntegrationSpec{
 				_, err := (&Codex{}).findCommand()
 				return err == nil
 			},
-			URL:     "https://developers.openai.com/codex/cli/",
+			URL:     "https://www.npmjs.com/package/@mmmbuto/codex-cli-termux",
 			Command: []string{"npm", "install", "-g", "@mmmbuto/codex-cli-termux"},
 		},
 	},
