@@ -32,13 +32,11 @@ func (q *Qwen) args(model string, extra []string) []string {
 }
 
 func (q *Qwen) findCommand() (resolvedCommand, error) {
-	termuxPackageCLI := termuxPackageEntrypoint("@mmmbuto/qwen-code-termux", "cli.js")
-	return resolveCommand("qwen", termuxPackageCLI)
+	return resolveCommand("qwen", termuxPackageEntrypoints("@mmmbuto/qwen-code-termux", "cli.js")...)
 }
 
 func (q *Qwen) findPath() (string, error) {
-	termuxPackageCLI := termuxPackageEntrypoint("@mmmbuto/qwen-code-termux", "cli.js")
-	return findCommandPath("qwen", termuxPackageCLI)
+	return findCommandPath("qwen", termuxPackageEntrypoints("@mmmbuto/qwen-code-termux", "cli.js")...)
 }
 
 func (q *Qwen) Run(model string, args []string) error {

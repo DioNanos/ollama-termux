@@ -272,7 +272,9 @@ func launchCommandSupportedIntegrationsHelp() string {
   codex-vl  Codex VL — Vivling-enhanced fork (primary on Termux)
   codex     Codex (Termux fork)
   qwen      Qwen Code (Termux fork)
-  claude    Claude Code (frozen @2.1.112)`
+  claude    Claude Code (frozen @2.1.112)
+  hermes    Hermes Agent (Termux supported)
+  pi        Pi Coding Agent`
 }
 
 // LaunchCmd returns the cobra command for launching integrations.

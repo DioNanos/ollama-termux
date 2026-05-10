@@ -52,13 +52,11 @@ func (c *CodexVL) Run(model string, args []string) error {
 }
 
 func (c *CodexVL) findCommand() (resolvedCommand, error) {
-	termuxPackageCLI := termuxPackageEntrypoint("@mmmbuto/codex-vl", "bin/codex.js")
-	return resolveCommand("codex-vl", termuxPackageCLI)
+	return resolveCommand("codex-vl", termuxPackageEntrypoints("@mmmbuto/codex-vl", "bin/codex.js")...)
 }
 
 func (c *CodexVL) findPath() (string, error) {
-	termuxPackageCLI := termuxPackageEntrypoint("@mmmbuto/codex-vl", "bin/codex.js")
-	return findCommandPath("codex-vl", termuxPackageCLI)
+	return findCommandPath("codex-vl", termuxPackageEntrypoints("@mmmbuto/codex-vl", "bin/codex.js")...)
 }
 
 // ensureCodexVLConfig writes the ollama-launch profile to ~/.codex/config.toml.

@@ -133,18 +133,36 @@ func termuxOpenURLCommand(url string) (*exec.Cmd, error) {
 	return spec.Command(url), nil
 }
 
-func termuxPackageEntrypoint(pkg, relativePath string) string {
+// termuxPackageEntrypoints returns all candidate paths for a Termux npm global package entrypoint.
+// These are raw .js paths under $PREFIX/lib/node_modules/ that resolveCommand will check.
+func termuxPackageEntrypoints(pkg, relativePath string) []string {
 	prefixes := []string{
 		os.Getenv("PREFIX"),
 		"/data/data/com.termux/files/usr",
 	}
 
+	seen := make(map[string]bool, len(prefixes))
+	paths := make([]string, 0, len(prefixes))
 	for _, prefix := range prefixes {
 		if prefix == "" {
 			continue
 		}
-		return filepath.Join(prefix, "lib", "node_modules", pkg, filepath.FromSlash(relativePath))
+		p := filepath.Join(prefix, "lib", "node_modules", pkg, filepath.FromSlash(relativePath))
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		paths = append(paths, p)
 	}
+	return paths
+}
 
+// termuxPackageEntrypoint returns the first Termux npm global package entrypoint path.
+// Prefer termuxPackageEntrypoints() for new code so all candidates are tried.
+func termuxPackageEntrypoint(pkg, relativePath string) string {
+	paths := termuxPackageEntrypoints(pkg, relativePath)
+	if len(paths) > 0 {
+		return paths[0]
+	}
 	return ""
 }

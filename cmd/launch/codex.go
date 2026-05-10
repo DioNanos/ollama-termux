@@ -51,8 +51,7 @@ func (c *Codex) Run(model string, args []string) error {
 }
 
 func (c *Codex) findCommand() (resolvedCommand, error) {
-	termuxPackageCLI := termuxPackageEntrypoint("@mmmbuto/codex-cli-termux", "bin/codex.js")
-	return resolveCommand("codex", termuxPackageCLI)
+	return resolveCommand("codex", termuxPackageEntrypoints("@mmmbuto/codex-cli-termux", "bin/codex.js")...)
 }
 
 // ensureCodexConfig writes a [profiles.ollama-launch] section to ~/.codex/config.toml

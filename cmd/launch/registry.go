@@ -33,14 +33,16 @@ type IntegrationInfo struct {
 	Description string
 }
 
-var launcherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude"}
+var launcherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude", "hermes", "pi"}
 
-var termuxLauncherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude"}
+var termuxLauncherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude", "hermes", "pi"}
 
 var termuxSupportedIntegrationNames = map[string]bool{
 	"claude":   true,
 	"codex":    true,
 	"codex-vl": true,
+	"hermes":   true,
+	"pi":       true,
 	"qwen":     true,
 }
 
@@ -101,6 +103,34 @@ var integrationSpecs = []*IntegrationSpec{
 			Command: []string{"npm", "install", "-g", "@mmmbuto/qwen-code-termux"},
 		},
 	},
+	{
+		Name:        "hermes",
+		Runner:      &Hermes{},
+		Description: "Self-improving AI agent by Nous Research — Termux supported",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := exec.LookPath("hermes")
+				return err == nil
+			},
+			URL:     "https://github.com/NousResearch/hermes-agent",
+			Command: []string{"curl", "-fsSL", "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh", "|", "bash"},
+		},
+	},
+	{
+		Name:        "pi",
+		Runner:      &Pi{},
+		Description: "Pi Coding Agent — npm-based AI agent toolkit",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := exec.LookPath("pi")
+				return err == nil
+			},
+			URL:     "https://www.npmjs.com/package/@mariozechner/pi-coding-agent",
+			Command: []string{"npm", "install", "-g", "@mariozechner/pi-coding-agent"},
+		},
+	},
+	{
+
 }
 
 var integrationSpecsByName map[string]*IntegrationSpec
