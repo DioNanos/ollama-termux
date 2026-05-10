@@ -86,7 +86,7 @@ var integrationSpecs = []*IntegrationSpec{
 				_, err := (&CodexVL{}).findCommand()
 				return err == nil
 			},
-			URL:     "https://forge.dag/codex-vl",
+			URL:     "https://www.npmjs.com/package/@mmmbuto/codex-vl",
 			Command: []string{"npm", "install", "-g", "@mmmbuto/codex-vl"},
 		},
 	},

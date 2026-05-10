@@ -50,7 +50,7 @@ behavior.
 pkg update && pkg upgrade -y
 pkg install nodejs-lts -y
 
-npm install -g @mmmbuto/ollama-termux@0.23.2-termux.1
+npm install -g @mmmbuto/ollama-termux@0.23.2-termux.2
 ```
 
 The npm package is an installer wrapper. During `postinstall`, it downloads the
