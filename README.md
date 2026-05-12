@@ -149,3 +149,13 @@ Optional Vulkan GPU backend (`BUILD_VULKAN=1`, runtime `OLLAMA_VULKAN=1`).
 
 MIT — original upstream [ollama/ollama](https://github.com/ollama/ollama).
 Termux fork work: DioNanos.
+
+---
+
+## Contact
+
+Maintained by [DioNanos](https://github.com/DioNanos).
+
+- General / dev: **dev@mmmbuto.com**
+- Security disclosures: **security@mmmbuto.com**
+- Project hub: <https://mmmbuto.com>
