@@ -1,0 +1,5 @@
+# CODEOWNERS for ollama-termux
+# Porting / distribution maintainer for Android ARM64 (Termux).
+# Generic Ollama changes belong upstream: https://github.com/ollama/ollama
+
+* @DioNanos
