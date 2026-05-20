@@ -31,9 +31,8 @@ def main() -> int:
         f"Built from upstream {upstream_repo} {upstream_tag} and adapted for Termux-first Android ARM64 packaging.",
         "",
         "## Termux adaptation",
-        "- Launcher CLI support on Termux stays limited to Codex (primary), Qwen Code (secondary), and Claude Code (frozen at 2.1.112).",
-        "- Unsupported upstream coding CLIs remain in source for merge safety but are disabled on Termux runtime.",
-        "- codex-vl is not included in this release.",
+        "- Launcher CLI support on Termux stays limited to Codex VL (primary), Codex, Qwen Code, and Hermes Agent.",
+        "- Unsupported upstream coding CLIs are disabled on Termux runtime.",
     ]
     if reuse_tag:
         lines.append(f"- Android ARM64 optimized libraries are reused from validated release assets: {reuse_tag}.")

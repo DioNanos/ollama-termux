@@ -31,13 +31,20 @@ endfunction()
 #  TEST_SHADER_FILE - Path to the test shader file
 #  RESULT_VARIABLE - Name of the variable to set (ON/OFF) based on test result
 function(test_shader_extension_support EXTENSION_NAME TEST_SHADER_FILE RESULT_VARIABLE)
+    if (NOT EXISTS "${TEST_SHADER_FILE}")
+        message(STATUS "${EXTENSION_NAME} feature test missing; disabling ${RESULT_VARIABLE}")
+        set(${RESULT_VARIABLE} OFF PARENT_SCOPE)
+        return()
+    endif()
+
     execute_process(
         COMMAND ${Vulkan_GLSLC_EXECUTABLE} -o - -fshader-stage=compute --target-env=vulkan1.3 "${TEST_SHADER_FILE}"
         OUTPUT_VARIABLE glslc_output
         ERROR_VARIABLE glslc_error
+        RESULT_VARIABLE glslc_result
     )
 
-    if (${glslc_error} MATCHES ".*extension not supported: ${EXTENSION_NAME}.*")
+    if (NOT glslc_result EQUAL 0 OR glslc_error MATCHES ".*extension not supported: ${EXTENSION_NAME}.*" OR glslc_error MATCHES ".*error:.*")
         message(STATUS "${EXTENSION_NAME} not supported by glslc")
         set(${RESULT_VARIABLE} OFF PARENT_SCOPE)
     else()

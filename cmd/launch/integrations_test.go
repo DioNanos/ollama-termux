@@ -52,13 +52,11 @@ func TestIntegrationLookup(t *testing.T) {
 		wantFound bool
 		wantName  string
 	}{
-		{"claude lowercase", "claude", true, "Claude Code"},
-		{"claude uppercase", "CLAUDE", true, "Claude Code"},
-		{"claude mixed case", "Claude", true, "Claude Code"},
-		{"claude desktop", "claude-desktop", true, "Claude Desktop"},
-		{"claude desktop alias", "claude-app", true, "Claude Desktop"},
+		{"codex-vl lowercase", "codex-vl", true, "Codex VL"},
+		{"codex uppercase", "CODEX", true, "Codex"},
 		{"codex", "codex", true, "Codex"},
 		{"qwen", "qwen", true, "Qwen Code"},
+		{"hermes", "hermes", true, "Hermes Agent"},
 		{"unknown integration", "unknown", false, ""},
 		{"empty string", "", false, ""},
 	}
@@ -77,7 +75,7 @@ func TestIntegrationLookup(t *testing.T) {
 }
 
 func TestIntegrationRegistry(t *testing.T) {
-	expectedIntegrations := []string{"claude", "codex", "codex-vl", "hermes", "qwen"}
+	expectedIntegrations := []string{"codex", "codex-vl", "hermes", "qwen"}
 
 	for _, name := range expectedIntegrations {
 		t.Run(name, func(t *testing.T) {
@@ -110,7 +108,7 @@ func TestTermuxVisibleIntegrationsOnlyShowSupportedCLIs(t *testing.T) {
 		gotNames = append(gotNames, info.Name)
 	}
 
-	want := []string{"codex-vl", "codex", "qwen", "claude", "hermes"}
+	want := []string{"codex-vl", "codex", "qwen", "hermes"}
 	if diff := cmp.Diff(want, gotNames); diff != "" {
 		t.Fatalf("visible integrations mismatch (-want +got):\n%s", diff)
 	}
@@ -166,23 +164,6 @@ func TestLookupIntegration_UnknownIntegration(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown integration") {
 		t.Errorf("error should mention 'unknown integration', got: %v", err)
-	}
-}
-
-func TestLookupIntegration_ClaudeDesktopResolvesForRestore(t *testing.T) {
-	for _, name := range []string{"claude-desktop", "claude-app"} {
-		t.Run(name, func(t *testing.T) {
-			canonical, runner, err := LookupIntegration(name)
-			if err != nil {
-				t.Fatalf("expected Claude Desktop lookup to resolve, got: %v", err)
-			}
-			if canonical != "claude-desktop" {
-				t.Fatalf("canonical name = %q, want claude-desktop", canonical)
-			}
-			if runner.String() != "Claude Desktop" {
-				t.Fatalf("runner = %q, want Claude Desktop", runner.String())
-			}
-		})
 	}
 }
 
@@ -251,9 +232,9 @@ func TestParseArgs(t *testing.T) {
 	}{
 		{
 			name:     "no extra args, no dash",
-			args:     []string{"claude"},
+			args:     []string{"codex-vl"},
 			dashIdx:  -1,
-			wantName: "claude",
+			wantName: "codex-vl",
 		},
 		{
 			name:     "with extra args after --",
@@ -271,9 +252,9 @@ func TestParseArgs(t *testing.T) {
 		},
 		{
 			name:     "-- at end with no args after",
-			args:     []string{"claude"},
+			args:     []string{"codex-vl"},
 			dashIdx:  1,
-			wantName: "claude",
+			wantName: "codex-vl",
 		},
 		{
 			name:     "-- with no integration name",
@@ -284,13 +265,13 @@ func TestParseArgs(t *testing.T) {
 		},
 		{
 			name:    "multiple args before -- is error",
-			args:    []string{"claude", "codex", "--verbose"},
+			args:    []string{"codex-vl", "codex", "--verbose"},
 			dashIdx: 2,
 			wantErr: true,
 		},
 		{
 			name:    "multiple args without -- is error",
-			args:    []string{"claude", "codex"},
+			args:    []string{"codex-vl", "codex"},
 			dashIdx: -1,
 			wantErr: true,
 		},
@@ -777,13 +758,13 @@ func TestEditorIntegration_SavedConfigSkipsSelection(t *testing.T) {
 	tmpDir := t.TempDir()
 	setTestHome(t, tmpDir)
 
-	// Save a config for opencode so it looks like a previous launch
-	if err := SaveIntegration("claude", []string{"llama3.2"}); err != nil {
+	// Save a config for codex so it looks like a previous launch.
+	if err := SaveIntegration("codex", []string{"llama3.2"}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify loadIntegration returns the saved models
-	saved, err := LoadIntegration("claude")
+	saved, err := LoadIntegration("codex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -879,17 +860,17 @@ func TestPrepareEditorIntegration_SavesOnlyAfterSuccessfulEdit(t *testing.T) {
 	tmpDir := t.TempDir()
 	setTestHome(t, tmpDir)
 
-	if err := SaveIntegration("claude", []string{"existing-model"}); err != nil {
+	if err := SaveIntegration("codex", []string{"existing-model"}); err != nil {
 		t.Fatalf("failed to seed config: %v", err)
 	}
 
 	editor := &stubEditorRunner{editErr: errors.New("boom")}
-	err := prepareEditorIntegration("claude", editor, []string{"new-model"})
+	err := prepareEditorIntegration("codex", editor, []string{"new-model"})
 	if err == nil || !strings.Contains(err.Error(), "setup failed") {
 		t.Fatalf("expected setup failure, got %v", err)
 	}
 
-	saved, err := LoadIntegration("claude")
+	saved, err := LoadIntegration("codex")
 	if err != nil {
 		t.Fatalf("failed to reload saved config: %v", err)
 	}
@@ -1749,14 +1730,9 @@ func TestIntegration_InstallHint(t *testing.T) {
 		wantURL   string
 	}{
 		{
-			name:    "claude has hint",
-			input:   "claude",
-			wantURL: "https://code.claude.com/docs/en/quickstart",
-		},
-		{
 			name:    "codex has hint",
 			input:   "codex",
-			wantURL: "https://developers.openai.com/codex/cli/",
+			wantURL: "https://www.npmjs.com/package/@mmmbuto/codex-cli-termux",
 		},
 		{
 			name:      "unknown has no hint",
@@ -1813,7 +1789,7 @@ func TestListIntegrationInfos(t *testing.T) {
 		for _, info := range infos {
 			got = append(got, info.Name)
 		}
-		want := []string{"codex-vl", "codex", "qwen", "claude", "hermes"}
+		want := []string{"codex-vl", "codex", "qwen", "hermes"}
 		if diff := compareStrings(got, want); diff != "" {
 			t.Fatalf("launcher integration order mismatch: %s", diff)
 		}
@@ -1831,7 +1807,7 @@ func TestListIntegrationInfos(t *testing.T) {
 	})
 
 	t.Run("includes known integrations", func(t *testing.T) {
-		known := map[string]bool{"claude": false, "codex": false, "codex-vl": false, "hermes": false, "qwen": false}
+		known := map[string]bool{"codex": false, "codex-vl": false, "hermes": false, "qwen": false}
 		for _, info := range infos {
 			if _, ok := known[info.Name]; ok {
 				known[info.Name] = true
@@ -1846,10 +1822,10 @@ func TestListIntegrationInfos(t *testing.T) {
 
 }
 
-func TestListIntegrationInfos_HidesClaudeDesktop(t *testing.T) {
+func TestListIntegrationInfos_DoesNotIncludeRemovedClaudeIntegrations(t *testing.T) {
 	for _, info := range ListIntegrationInfos() {
-		if info.Name == "claude-desktop" {
-			t.Fatal("expected hidden claude-desktop to be absent")
+		if info.Name == "claude" || info.Name == "claude-desktop" {
+			t.Fatalf("expected removed Claude integration %q to be absent", info.Name)
 		}
 	}
 }
@@ -1912,8 +1888,6 @@ func TestIntegration_Editor(t *testing.T) {
 		name string
 		want bool
 	}{
-		{"claude", false},
-		{"claude-desktop", false},
 		{"codex", false},
 		{"nonexistent", false},
 	}
@@ -1936,8 +1910,6 @@ func TestIntegration_AutoInstallable(t *testing.T) {
 		name string
 		want bool
 	}{
-		{"claude", false},
-		{"claude-desktop", false},
 		{"codex", false},
 	}
 	for _, tt := range tests {
@@ -1959,16 +1931,16 @@ func TestIntegrationModels(t *testing.T) {
 	setTestHome(t, tmpDir)
 
 	t.Run("returns nil when not configured", func(t *testing.T) {
-		if got := IntegrationModels("claude"); got != nil {
+		if got := IntegrationModels("codex"); got != nil {
 			t.Errorf("expected nil, got %v", got)
 		}
 	})
 
 	t.Run("returns all saved models", func(t *testing.T) {
-		if err := SaveIntegration("claude", []string{"llama3.2", "qwen3.5"}); err != nil {
+		if err := SaveIntegration("codex", []string{"llama3.2", "qwen3.5"}); err != nil {
 			t.Fatal(err)
 		}
-		got := IntegrationModels("claude")
+		got := IntegrationModels("codex")
 		want := []string{"llama3.2", "qwen3.5"}
 		if diff := cmp.Diff(want, got); diff != "" {
 			t.Errorf("IntegrationModels mismatch (-want +got):\n%s", diff)

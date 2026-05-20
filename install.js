@@ -88,11 +88,40 @@ function writeOllamaWrapper() {
   const script = `#!/data/data/com.termux/files/usr/bin/sh
 PREFIX="\${PREFIX:-/data/data/com.termux/files/usr}"
 OLLAMA_REAL_BIN="$PREFIX/lib/ollama/ollama"
-export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib/ollama\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib/ollama:$PREFIX/lib/ollama/vulkan\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$OLLAMA_REAL_BIN" "$@"
 `;
   fs.writeFileSync(OLLAMA_BIN, script, { mode: 0o755 });
   fs.chmodSync(OLLAMA_BIN, 0o755);
+}
+
+function removeInstalledBackends() {
+  if (!fs.existsSync(OLLAMA_LIB)) return;
+  for (const entry of fs.readdirSync(OLLAMA_LIB, { withFileTypes: true })) {
+    if (entry.name === 'ollama' || entry.name === 'ollama.orig') continue;
+    const target = path.join(OLLAMA_LIB, entry.name);
+    if (entry.isDirectory() || entry.name.endsWith('.so')) {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  }
+}
+
+function copyTree(srcDir, dstDir, relDir = '') {
+  fs.mkdirSync(dstDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const src = path.join(srcDir, entry.name);
+    const dst = path.join(dstDir, entry.name);
+    const rel = path.join(relDir, entry.name);
+
+    if (entry.isDirectory()) {
+      copyTree(src, dst, rel);
+      continue;
+    }
+
+    backupIfExists(dst);
+    fs.copyFileSync(src, dst);
+    log('Installed: ' + path.join('lib/ollama', rel));
+  }
 }
 
 async function main() {
@@ -176,14 +205,8 @@ async function main() {
   // Install ggml backends
   const extractedLib = path.join(tmpDir, 'lib', 'ollama');
   if (fs.existsSync(extractedLib)) {
-    const soFiles = fs.readdirSync(extractedLib).filter(f => f.endsWith('.so'));
-    for (const so of soFiles) {
-      const src = path.join(extractedLib, so);
-      const dst = path.join(OLLAMA_LIB, so);
-      backupIfExists(dst);
-      fs.copyFileSync(src, dst);
-      log('Installed: ' + path.join('lib/ollama', so));
-    }
+    removeInstalledBackends();
+    copyTree(extractedLib, OLLAMA_LIB);
   }
 
   // Cleanup
@@ -198,8 +221,10 @@ async function main() {
   log('  ollama serve &');
   log('  ollama pull qwen3.5:4b');
   log('  ollama pull gemma4:e4b');
-  log('  ollama launch claude --model qwen3.5:4b');
-  log('  ollama launch codex --model gemma4:e4b');
+  log('  ollama launch codex-vl --model gemma4:e4b');
+  log('  ollama launch codex --model qwen3.5:4b');
+  log('  ollama launch qwen --model gemma4:e2b');
+  log('  ollama launch hermes');
 }
 
 main().catch((e) => {

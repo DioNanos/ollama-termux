@@ -162,6 +162,10 @@ else
         lib_dir="$variant_dir/lib/ollama"
         if [ -d "$lib_dir" ]; then
             mkdir -p "$DIST_DIR/lib/ollama"
+            if [ -f "$lib_dir/libggml-base.so" ] && [ ! -f "$DIST_DIR/lib/ollama/libggml-base.so" ]; then
+                cp "$lib_dir/libggml-base.so" "$DIST_DIR/lib/ollama/"
+                echo "  Copied: libggml-base.so"
+            fi
             # Rename each .so with the variant name so the 3 builds don't overwrite each other.
             # Output: libggml-cpu-android_armv8_0_1.so / *_armv8_2_1.so / *_armv8_6_1.so
             suffix="android_${name//./_}_1"
@@ -186,18 +190,32 @@ else
         echo "--- Building ggml-vulkan (Android loader, runtime LD_LIBRARY_PATH=/system/lib64) ---"
 
         # The NDK sysroot ships vulkan/vulkan.h (C) but not vulkan.hpp (C++).
-        # ggml-vulkan.cpp needs the C++ wrapper, so point find_package(Vulkan)
-        # at the host vulkan-headers package (installed via apt / LunarG SDK).
+        # ggml-vulkan.cpp needs the C++ wrapper, so create an include overlay:
+        # Android C headers from the NDK sysroot plus host-only C++ .hpp wrappers.
+        # Never add /usr/include directly to Android CXX flags; that leaks glibc
+        # headers into the NDK sysroot and breaks cross-compilation.
         VULKAN_HOST_INCLUDE="${VULKAN_HOST_INCLUDE:-/usr/include}"
+        VULKAN_NDK_INCLUDE="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include"
+        VULKAN_NDK_LIBRARY="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/28/libvulkan.so"
+        VULKAN_INCLUDE_OVERLAY="$BUILD_DIR/vulkan-include-overlay"
         if [ ! -f "$VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp" ]; then
             echo "ERROR: vulkan.hpp not found at $VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp"
-            echo "       install vulkan-headers (apt install vulkan-headers, or LunarG SDK)"
+            echo "       install libvulkan-dev or LunarG SDK on the build host"
+            exit 1
+        fi
+        if [ ! -f "$VULKAN_NDK_INCLUDE/vulkan/vulkan.h" ] || [ ! -f "$VULKAN_NDK_LIBRARY" ]; then
+            echo "ERROR: NDK Vulkan headers/library not found under $NDK_ROOT"
             exit 1
         fi
 
-        # -isystem in CXX flags injects the host vulkan-headers path ahead of
-        # the NDK sysroot so ggml-vulkan.cpp's #include <vulkan/vulkan.hpp>
-        # resolves against the C++ wrapper that the NDK sysroot does not ship.
+        rm -rf "$VULKAN_INCLUDE_OVERLAY"
+        mkdir -p "$VULKAN_INCLUDE_OVERLAY/vulkan"
+        cp "$VULKAN_NDK_INCLUDE"/vulkan/*.h "$VULKAN_INCLUDE_OVERLAY/vulkan/"
+        if [ -d "$VULKAN_NDK_INCLUDE/vk_video" ]; then
+            cp -R "$VULKAN_NDK_INCLUDE/vk_video" "$VULKAN_INCLUDE_OVERLAY/"
+        fi
+        cp "$VULKAN_HOST_INCLUDE"/vulkan/*.hpp "$VULKAN_INCLUDE_OVERLAY/vulkan/"
+
         cmake -S "$ROOT_DIR" -B "$vulkan_dir" \
             -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
             -DANDROID_ABI=arm64-v8a \
@@ -205,7 +223,7 @@ else
             -DANDROID_ARM_NEON=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
-            -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3 -isystem $VULKAN_HOST_INCLUDE" \
+            -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3 -isystem $VULKAN_INCLUDE_OVERLAY" \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DGGML_VULKAN=ON \
             -DGGML_VULKAN_CHECK_RESULTS=OFF \
@@ -213,7 +231,8 @@ else
             -DGGML_CUDA=OFF \
             -DGGML_HIP=OFF \
             -DMLX_ENGINE=OFF \
-            -DVulkan_INCLUDE_DIR="$VULKAN_HOST_INCLUDE" \
+            -DVulkan_INCLUDE_DIR="$VULKAN_INCLUDE_OVERLAY" \
+            -DVulkan_LIBRARY="$VULKAN_NDK_LIBRARY" \
             -GNinja
 
         ninja -C "$vulkan_dir" ggml-vulkan

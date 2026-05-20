@@ -272,7 +272,6 @@ func launchCommandSupportedIntegrationsHelp() string {
   codex-vl  Codex VL — Vivling-enhanced fork (primary on Termux)
   codex     Codex (Termux fork)
   qwen      Qwen Code (Termux fork)
-  claude    Claude Code (frozen @2.1.112)
   hermes    Hermes Agent (Termux supported)`
 }
 
@@ -296,13 +295,14 @@ Flags and extra arguments require an integration name.
 
 Examples:
   ollama launch
-  ollama launch claude
-  ollama launch claude --model <model>
+  ollama launch codex-vl --model <model>
   ollama launch codex
+  ollama launch qwen --model <model>
+  ollama launch hermes
   ollama launch codex -- -p myprofile (pass extra args to integration)`, launchCommandSupportedIntegrationsHelp()),
-		Args:    cobra.ArbitraryArgs,
+		Args: cobra.ArbitraryArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if restoreFlag || launchCommandCanSkipHeartbeat(args) {
+			if restoreFlag {
 				return nil
 			}
 			return checkServerHeartbeat(cmd, args)
@@ -336,14 +336,10 @@ Examples:
 
 			if name == "" {
 				if cmd.Flags().Changed("model") || cmd.Flags().Changed("config") || cmd.Flags().Changed("yes") || cmd.Flags().Changed("restore") || len(passArgs) > 0 {
-					return fmt.Errorf("flags and extra args require an integration name, for example: 'ollama launch claude --model qwen3.5'")
+					return fmt.Errorf("flags and extra args require an integration name, for example: 'ollama launch codex-vl --model qwen3.5'")
 				}
 				runTUI(cmd)
 				return nil
-			}
-
-			if !restoreFlag && launchCommandIsClaudeDesktop(name) {
-				return errClaudeDesktopUnsupported()
 			}
 
 			if modelFlag != "" && isCloudModelName(modelFlag) {
@@ -385,18 +381,6 @@ Examples:
 	cmd.Flags().BoolVar(&restoreFlag, "restore", false, "Restore an integration to its default profile")
 	cmd.Flags().BoolVarP(&yesFlag, "yes", "y", false, "Automatically answer yes to confirmation prompts")
 	return cmd
-}
-
-func launchCommandCanSkipHeartbeat(args []string) bool {
-	if len(args) == 0 {
-		return false
-	}
-	return launchCommandIsClaudeDesktop(args[0])
-}
-
-func launchCommandIsClaudeDesktop(name string) bool {
-	canonical, _, err := LookupIntegration(name)
-	return err == nil && canonical == claudeDesktopIntegrationName
 }
 
 type launcherClient struct {
@@ -457,10 +441,6 @@ func LaunchIntegration(ctx context.Context, req IntegrationLaunchRequest) error 
 	name, runner, err := LookupIntegration(req.Name)
 	if err != nil {
 		return err
-	}
-
-	if name == claudeDesktopIntegrationName && !req.Restore {
-		return errClaudeDesktopUnsupported()
 	}
 
 	policy := launchIntegrationPolicy(req)
@@ -764,7 +744,13 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 		return nil
 	}
 
-	if needsConfigure || req.ModelOverride != "" || (current != "" && target != current) || !savedMatchesModels(saved, []string{target}) {
+	// current is the live managed app config; target may come from saved launch
+	// state. Rewrite when the live config is missing or has drifted so the app
+	// config converges with the model which launch is about to use.
+	liveConfigMissing := current == ""
+	liveConfigDrifted := current != "" && target != current
+	configured := false
+	if needsConfigure || req.ModelOverride != "" || liveConfigMissing || liveConfigDrifted || !savedMatchesModels(saved, []string{target}) {
 		configureModels, err := c.managedSingleConfigureModels(ctx, managed, target)
 		if err != nil {
 			return err
@@ -777,6 +763,7 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 				return err
 			}
 		}
+		configured = true
 	}
 
 	if !managedIntegrationOnboarded(saved, managed) {
@@ -785,6 +772,12 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 		}
 		if err := managed.Onboard(); err != nil {
 			return err
+		}
+	}
+
+	if configured {
+		if !printConfigurationSuccess(managed) {
+			printRestoreHint(managed)
 		}
 	}
 
@@ -936,7 +929,7 @@ func (c *launcherClient) resolveSingleIntegrationTarget(ctx context.Context, run
 		}
 	}
 
-	if needsConfigure {
+	if needsConfigure && req.ModelOverride == "" {
 		selected, err := c.selectSingleModelWithSelectorReady(ctx, fmt.Sprintf("Select model for %s:", runner), target, DefaultSingleSelector, !skipReadiness)
 		if err != nil {
 			return "", false, err

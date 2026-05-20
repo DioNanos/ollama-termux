@@ -35,12 +35,11 @@ type IntegrationInfo struct {
 	Description string
 }
 
-var launcherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude", "hermes"}
+var launcherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "hermes"}
 
-var termuxLauncherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "claude", "hermes"}
+var termuxLauncherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "hermes"}
 
 var termuxSupportedIntegrationNames = map[string]bool{
-	"claude":   true,
 	"codex":    true,
 	"codex-vl": true,
 	"hermes":   true,
@@ -52,31 +51,6 @@ var isTermuxRuntime = func() bool {
 }
 
 var integrationSpecs = []*IntegrationSpec{
-	{
-		Name:        "claude",
-		Runner:      &Claude{},
-		Description: "Anthropic Claude Code (frozen @2.1.112 on Termux)",
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				_, err := (&Claude{}).findPath()
-				return err == nil
-			},
-			URL: "https://code.claude.com/docs/en/quickstart",
-		},
-	},
-	{
-		Name:        "claude-desktop",
-		Runner:      &ClaudeDesktop{},
-		Aliases:     []string{"claude-app"},
-		Description: "Claude Desktop with Ollama Cloud",
-		Hidden:      true,
-		Install: IntegrationInstallSpec{
-			CheckInstalled: func() bool {
-				return claudeDesktopInstalled()
-			},
-			URL: "https://claude.com/download",
-		},
-	},
 	{
 		Name:        "codex-vl",
 		Runner:      &CodexVL{},

@@ -64,6 +64,7 @@ export NDK_ROOT=~/android-ndk/android-ndk-r27c
 The tarball contains:
 
 - `bin/ollama`
+- `lib/ollama/libggml-base.so`
 - `lib/ollama/libggml-cpu-android_armv8_0_1.so`
 - `lib/ollama/libggml-cpu-android_armv8_2_1.so`
 - `lib/ollama/libggml-cpu-android_armv8_6_1.so`
