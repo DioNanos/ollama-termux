@@ -138,6 +138,7 @@ jobs:
           test -f "dist/ollama-termux-${VERSION}-android-arm64.tar.gz.sha256"
           tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" > "$RUNNER_TEMP/termux-asset-files.txt"
           grep -qx './bin/ollama' "$RUNNER_TEMP/termux-asset-files.txt"
+          grep -qx './lib/ollama/libggml-base.so' "$RUNNER_TEMP/termux-asset-files.txt"
           grep -qx './lib/ollama/libggml-cpu-android_armv8_0_1.so' "$RUNNER_TEMP/termux-asset-files.txt"
           if [ "${{ steps.meta.outputs.build_vulkan }}" = "1" ]; then
             grep -qx './lib/ollama/vulkan/libggml-base.so' "$RUNNER_TEMP/termux-asset-files.txt"

@@ -162,6 +162,10 @@ else
         lib_dir="$variant_dir/lib/ollama"
         if [ -d "$lib_dir" ]; then
             mkdir -p "$DIST_DIR/lib/ollama"
+            if [ -f "$lib_dir/libggml-base.so" ] && [ ! -f "$DIST_DIR/lib/ollama/libggml-base.so" ]; then
+                cp "$lib_dir/libggml-base.so" "$DIST_DIR/lib/ollama/"
+                echo "  Copied: libggml-base.so"
+            fi
             # Rename each .so with the variant name so the 3 builds don't overwrite each other.
             # Output: libggml-cpu-android_armv8_0_1.so / *_armv8_2_1.so / *_armv8_6_1.so
             suffix="android_${name//./_}_1"
