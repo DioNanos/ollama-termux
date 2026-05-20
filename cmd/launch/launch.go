@@ -744,7 +744,13 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 		return nil
 	}
 
-	if needsConfigure || req.ModelOverride != "" || (current != "" && target != current) || !savedMatchesModels(saved, []string{target}) {
+	// current is the live managed app config; target may come from saved launch
+	// state. Rewrite when the live config is missing or has drifted so the app
+	// config converges with the model which launch is about to use.
+	liveConfigMissing := current == ""
+	liveConfigDrifted := current != "" && target != current
+	configured := false
+	if needsConfigure || req.ModelOverride != "" || liveConfigMissing || liveConfigDrifted || !savedMatchesModels(saved, []string{target}) {
 		configureModels, err := c.managedSingleConfigureModels(ctx, managed, target)
 		if err != nil {
 			return err
@@ -757,6 +763,7 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 				return err
 			}
 		}
+		configured = true
 	}
 
 	if !managedIntegrationOnboarded(saved, managed) {
@@ -765,6 +772,12 @@ func (c *launcherClient) launchManagedSingleIntegration(ctx context.Context, nam
 		}
 		if err := managed.Onboard(); err != nil {
 			return err
+		}
+	}
+
+	if configured {
+		if !printConfigurationSuccess(managed) {
+			printRestoreHint(managed)
 		}
 	}
 
@@ -916,7 +929,7 @@ func (c *launcherClient) resolveSingleIntegrationTarget(ctx context.Context, run
 		}
 	}
 
-	if needsConfigure {
+	if needsConfigure && req.ModelOverride == "" {
 		selected, err := c.selectSingleModelWithSelectorReady(ctx, fmt.Sprintf("Select model for %s:", runner), target, DefaultSingleSelector, !skipReadiness)
 		if err != nil {
 			return "", false, err

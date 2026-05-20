@@ -42,7 +42,7 @@ func (q *Qwen) findPath() (string, error) {
 func (q *Qwen) Run(model string, args []string) error {
 	qwen, err := q.findCommand()
 	if err != nil {
-		return fmt.Errorf("qwen is not installed\n\nInstall with:\n  npm install -g @mmmbuto/qwen-code-termux  (recommended on Termux)\n  or\n  npm install -g @qwen-code/qwen-code")
+		return fmt.Errorf("qwen is not installed\n\nInstall with:\n  npm install -g @mmmbuto/qwen-code-termux")
 	}
 
 	cmd := qwen.Command(q.args(model, args)...)

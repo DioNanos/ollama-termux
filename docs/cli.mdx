@@ -18,11 +18,10 @@ Configure and launch external applications to use Ollama models. This provides a
 
 #### Supported integrations
 
-- **OpenCode** - Open-source coding assistant
-- **Claude Code** - Anthropic's agentic coding tool
-- **Codex** - OpenAI's coding assistant
-- **VS Code** - Microsoft's IDE with built-in AI chat
-- **Droid** - Factory's AI coding agent
+- **Codex VL** - Vivling-enhanced Codex fork for Termux
+- **Codex** - Codex Termux fork
+- **Qwen Code** - Qwen Code Termux fork
+- **Hermes Agent** - Self-improving agent by Nous Research
 
 #### Examples
 
@@ -35,19 +34,19 @@ ollama launch
 Launch a specific integration:
 
 ```
-ollama launch claude
+ollama launch codex-vl
 ```
 
 Launch with a specific model:
 
 ```
-ollama launch claude --model qwen3.5
+ollama launch codex --model qwen3.5:4b
 ```
 
 Configure without launching:
 
 ```
-ollama launch droid --config
+ollama launch qwen --config
 ```
 
 #### Multiline input
