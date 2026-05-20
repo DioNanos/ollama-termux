@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ca-certificates curl file glslc ninja-build python3 unzip vulkan-headers
+            ca-certificates curl file glslc libvulkan-dev ninja-build python3 unzip
 
       - name: Verify public release safety
         run: bash .github/scripts/verify-public-release-safety.sh
