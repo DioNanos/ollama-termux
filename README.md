@@ -25,8 +25,7 @@ behavior.
 ### What This Fork Changes
 
 - Keeps only the launcher integrations we support on Termux:
-  **Codex VL** (primary), **Codex**, **Qwen Code**, **Claude Code** (frozen),
-  **Hermes Agent**
+  **Codex VL** (primary), **Codex**, **Qwen Code**, **Hermes Agent**
 - Uses `termux-open-url` for browser/OAuth flows
 - Tunes CPU thread selection, memory heuristics, flash attention defaults, and
   context limits for modern phones
@@ -50,12 +49,12 @@ behavior.
 pkg update && pkg upgrade -y
 pkg install nodejs-lts -y
 
-npm install -g @mmmbuto/ollama-termux@0.23.2-termux.3
+npm install -g @mmmbuto/ollama-termux@latest
 ```
 
 The npm package is an installer wrapper. During `postinstall`, it downloads the
 matching GitHub Release asset, verifies SHA256, and installs `bin/ollama` +
-`lib/ollama/*.so` under the Termux prefix.
+`lib/ollama` backends under the Termux prefix.
 
 ---
 
@@ -66,8 +65,7 @@ matching GitHub Release asset, verifies SHA256, and installs `bin/ollama` +
 | 1 | **Codex VL** | `@mmmbuto/codex-vl` | Primary — Vivling-enhanced fork |
 | 2 | **Codex** | `@mmmbuto/codex-cli-termux` | Secondary |
 | 3 | **Qwen Code** | `@mmmbuto/qwen-code-termux` | OpenAI-compat via local Ollama |
-| 4 | **Claude Code** | `@anthropic-ai/claude-code@2.1.112` | Frozen (Anthropic dropped Termux) |
-| 5 | **Hermes Agent** | curl install script | Official Termux support |
+| 4 | **Hermes Agent** | curl install script | Official Termux support |
 
 Install the CLIs you need:
 
@@ -80,9 +78,6 @@ npm install -g @mmmbuto/codex-cli-termux
 
 # Qwen Code
 npm install -g @mmmbuto/qwen-code-termux
-
-# Claude Code — frozen, do NOT upgrade past 2.1.112
-npm install -g @anthropic-ai/claude-code@2.1.112
 
 # Hermes Agent
 curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
@@ -104,7 +99,6 @@ ollama pull gemma4:e4b
 ollama launch codex-vl --model gemma4:e4b
 ollama launch codex --model qwen3.5:4b
 ollama launch qwen --model gemma4:e2b
-ollama launch claude --model qwen3.5:4b
 ollama launch hermes
 
 ```
