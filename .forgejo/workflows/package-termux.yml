@@ -35,7 +35,8 @@ jobs:
             sudo_cmd="sudo"
           fi
           ${sudo_cmd} apt-get update
-          ${sudo_cmd} apt-get install -y --no-install-recommends curl unzip file ca-certificates
+          ${sudo_cmd} apt-get install -y --no-install-recommends \
+            ca-certificates curl file glslc ninja-build python3 unzip vulkan-headers
       - name: Verify public release safety
         run: bash .github/scripts/verify-public-release-safety.sh
       - name: Download Android NDK
@@ -49,12 +50,23 @@ jobs:
             unzip -q /tmp/android-ndk.zip -d "$(dirname "$NDK_DIR")"
           fi
           echo "NDK_ROOT=$NDK_DIR" >> "$GITHUB_ENV"
-      - name: Build Android package with reused validated libs
+      - name: Build Android package
         run: |
           set -euo pipefail
-          export TERMUX_REUSE_RELEASE_TAG="$(node -p "require('./package.json').termuxReuseReleaseTag")"
+          export BUILD_VULKAN=1
           export NDK_ROOT="${NDK_ROOT}"
           ./scripts/build_termux.sh
+      - name: Verify Android release assets
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          ASSET="dist/ollama-termux-${VERSION}-android-arm64.tar.gz"
+          test -f "$ASSET"
+          test -f "$ASSET.sha256"
+          tar -tzf "$ASSET" | grep -qx './bin/ollama'
+          tar -tzf "$ASSET" | grep -qx './lib/ollama/libggml-cpu-android_armv8_0_1.so'
+          tar -tzf "$ASSET" | grep -qx './lib/ollama/vulkan/libggml-base.so'
+          tar -tzf "$ASSET" | grep -qx './lib/ollama/vulkan/libggml-vulkan.so'
       - name: Validate installer and npm package
         run: |
           set -euo pipefail

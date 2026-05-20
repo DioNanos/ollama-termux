@@ -1,8 +1,7 @@
 {
   "name": "@mmmbuto/ollama-termux",
-  "version": "0.23.2-termux.3",
+  "version": "0.24.0-termux.1",
   "description": "Upstream Ollama published as a Termux-first Android ARM64 fork with prebuilt release assets and mobile-oriented runtime tuning.",
-  "termuxReuseReleaseTag": "v0.23.2-termux.3",
   "keywords": [
     "ollama",
     "termux",

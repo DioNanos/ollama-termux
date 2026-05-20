@@ -101,6 +101,10 @@ jobs:
           test -f "dist/ollama-termux-${VERSION}-android-arm64.tar.gz.sha256"
           tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" | grep -qx './bin/ollama'
           tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" | grep -qx './lib/ollama/libggml-cpu-android_armv8_0_1.so'
+          if [ "${{ inputs.build_vulkan || '1' }}" = "1" ]; then
+            tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" | grep -qx './lib/ollama/vulkan/libggml-base.so'
+            tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" | grep -qx './lib/ollama/vulkan/libggml-vulkan.so'
+          fi
 
       - name: Generate release notes
         run: |
