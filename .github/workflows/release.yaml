@@ -1,5 +1,9 @@
 name: release-termux
 
+concurrency:
+  group: release-termux-${{ github.ref }}-${{ inputs.publish_release || 'tag' }}
+  cancel-in-progress: false
+
 on:
   push:
     tags:
@@ -10,6 +14,19 @@ on:
         description: Existing tag to release, for example v0.24.0-termux.1
         required: true
         type: string
+      source_ref:
+        description: Ref to build for verify-only dispatch, defaults to the selected branch or tag
+        required: false
+        default: ""
+        type: string
+      publish_release:
+        description: Publish the GitHub release after building assets
+        required: false
+        default: "0"
+        type: choice
+        options:
+          - "0"
+          - "1"
       build_vulkan:
         description: Build Vulkan backend when not reusing release libraries
         required: false
@@ -36,20 +53,40 @@ jobs:
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             TAG="${{ inputs.release_tag }}"
+            CHECKOUT_REF="${{ inputs.source_ref }}"
+            PUBLISH_RELEASE="${{ inputs.publish_release }}"
+            BUILD_VULKAN="${{ inputs.build_vulkan }}"
+            if [ -z "$CHECKOUT_REF" ]; then
+              CHECKOUT_REF="${GITHUB_REF_NAME}"
+            fi
           else
             TAG="${GITHUB_REF_NAME}"
+            CHECKOUT_REF="$TAG"
+            PUBLISH_RELEASE="1"
+            BUILD_VULKAN="1"
           fi
           case "$TAG" in
             v*-termux*) ;;
             *) echo "Invalid release tag: $TAG"; exit 1 ;;
           esac
+          case "$PUBLISH_RELEASE" in
+            0|1) ;;
+            *) echo "Invalid publish_release: $PUBLISH_RELEASE"; exit 1 ;;
+          esac
+          case "$BUILD_VULKAN" in
+            0|1) ;;
+            *) echo "Invalid build_vulkan: $BUILD_VULKAN"; exit 1 ;;
+          esac
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "checkout_ref=$CHECKOUT_REF" >> "$GITHUB_OUTPUT"
+          echo "publish_release=$PUBLISH_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "build_vulkan=$BUILD_VULKAN" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ steps.meta.outputs.tag }}
+          ref: ${{ steps.meta.outputs.checkout_ref }}
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -89,7 +126,7 @@ jobs:
           if [ -n "$REUSE_TAG" ]; then
             export TERMUX_REUSE_RELEASE_TAG="$REUSE_TAG"
           else
-            export BUILD_VULKAN="${{ inputs.build_vulkan || '1' }}"
+            export BUILD_VULKAN="${{ steps.meta.outputs.build_vulkan }}"
           fi
           ./scripts/build_termux.sh
 
@@ -101,7 +138,7 @@ jobs:
           test -f "dist/ollama-termux-${VERSION}-android-arm64.tar.gz.sha256"
           tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" | grep -qx './bin/ollama'
           tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" | grep -qx './lib/ollama/libggml-cpu-android_armv8_0_1.so'
-          if [ "${{ inputs.build_vulkan || '1' }}" = "1" ]; then
+          if [ "${{ steps.meta.outputs.build_vulkan }}" = "1" ]; then
             tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" | grep -qx './lib/ollama/vulkan/libggml-base.so'
             tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" | grep -qx './lib/ollama/vulkan/libggml-vulkan.so'
           fi
@@ -115,7 +152,17 @@ jobs:
           export TERMUX_REUSE_RELEASE_TAG="$(node -p "require('./package.json').termuxReuseReleaseTag || ''")"
           python3 .github/scripts/generate_termux_release_notes.py "$RUNNER_TEMP/release-notes.md"
 
+      - name: Upload release assets for audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ollama-termux-${{ steps.meta.outputs.tag }}-android-arm64
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          if-no-files-found: error
+
       - name: Publish GitHub release
+        if: steps.meta.outputs.publish_release == '1'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
