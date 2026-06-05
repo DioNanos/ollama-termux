@@ -170,6 +170,24 @@ else
             cp -R "$VULKAN_NDK_INCLUDE/vk_video" "$VULKAN_INCLUDE_OVERLAY/"
         fi
         cp "$VULKAN_HOST_INCLUDE"/vulkan/*.hpp "$VULKAN_INCLUDE_OVERLAY/vulkan/"
+
+        # ggml-vulkan also needs the host SPIRV-Headers cmake package; the
+        # Android toolchain re-roots find_package, so locate the config on
+        # the host and pass SPIRV-Headers_DIR explicitly.
+        SPIRV_HEADERS_DIR="${SPIRV_HEADERS_DIR:-}"
+        if [ -z "$SPIRV_HEADERS_DIR" ]; then
+            for d in /usr/lib/cmake/SPIRV-Headers /usr/share/cmake/SPIRV-Headers /usr/lib/x86_64-linux-gnu/cmake/SPIRV-Headers; do
+                if [ -f "$d/SPIRV-HeadersConfig.cmake" ]; then
+                    SPIRV_HEADERS_DIR="$d"
+                    break
+                fi
+            done
+        fi
+        if [ -z "$SPIRV_HEADERS_DIR" ]; then
+            echo "ERROR: SPIRV-Headers cmake package not found on the host"
+            echo "       install spirv-headers (apt) or set SPIRV_HEADERS_DIR"
+            exit 1
+        fi
     fi
 
     server_dir="$BUILD_DIR/llama-server"
@@ -203,6 +221,7 @@ else
             -DVulkan_INCLUDE_DIR="$VULKAN_INCLUDE_OVERLAY"
             -DVulkan_LIBRARY="$VULKAN_NDK_LIBRARY"
             -DVulkan_GLSLC_EXECUTABLE="$(command -v glslc)"
+            -DSPIRV-Headers_DIR="$SPIRV_HEADERS_DIR"
         )
     fi
 

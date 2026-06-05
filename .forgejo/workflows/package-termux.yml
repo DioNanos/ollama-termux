@@ -36,7 +36,7 @@ jobs:
           fi
           ${sudo_cmd} apt-get update
           ${sudo_cmd} apt-get install -y --no-install-recommends \
-            ca-certificates curl file glslc ninja-build python3 unzip vulkan-headers
+            ca-certificates curl file glslc libvulkan-dev ninja-build python3 spirv-headers unzip vulkan-headers
       - name: Verify public release safety
         run: bash .github/scripts/verify-public-release-safety.sh
       - name: Download Android NDK
