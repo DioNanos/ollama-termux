@@ -41,6 +41,12 @@ func (c *Codex) args(model, modelCatalogPath string, extra []string) ([]string, 
 	for _, override := range codexManagedConfigOverrides(modelCatalogPath) {
 		args = append(args, "-c", override)
 	}
+	if envconfig.IsTermux() {
+		// Termux: per-action approval prompts and the sandbox are
+		// unavailable on Android; run autonomously like the other
+		// Termux integrations.
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	}
 	if model != "" {
 		args = append(args, "-m", model)
 	}
@@ -67,7 +73,7 @@ func (c *Codex) Run(model string, models []LaunchModel, args []string) error {
 		return fmt.Errorf("failed to configure codex: %w", err)
 	}
 
-	cmd := exec.Command("codex", codexArgs...)
+	cmd := codexExecCommand(codexArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -753,6 +759,12 @@ func buildCodexModelEntry(launchModel LaunchModel) map[string]any {
 }
 
 func checkCodexVersion() error {
+	if envconfig.IsTermux() {
+		// Termux uses the @mmmbuto/codex-cli-termux fork resolved through
+		// the npm entrypoint resolver; fork versions carry a -termux suffix.
+		return checkCodexVersionTermux()
+	}
+
 	if _, err := exec.LookPath("codex"); err != nil {
 		return fmt.Errorf("codex is not installed, install with: npm install -g @openai/codex")
 	}

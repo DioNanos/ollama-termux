@@ -5,42 +5,64 @@ import (
 	"os"
 	"strings"
 
-	"golang.org/x/mod/semver"
+	"github.com/ollama/ollama/envconfig"
 )
 
-// CodexVL implements Runner for Codex VL integration.
-// Codex VL is the Vivling-enhanced fork of Codex maintained at git@forge:dag/codex-vl.git,
-// published as @mmmbuto/codex-vl on npm.
+// CodexVL implements Runner for the Codex VL integration.
+// Codex VL is the Vivling-enhanced fork of Codex maintained at
+// git@forge:dag/codex-vl.git and published as @mmmbuto/codex-vl on npm.
+// It shares the upstream Codex config format, so the ollama-launch profile
+// and model catalog written by ensureCodexConfig are reused as-is.
 type CodexVL struct{}
 
 func (c *CodexVL) String() string { return "Codex VL" }
 
-const codexVLProfileName = "ollama-launch"
+func (c *CodexVL) args(model, modelCatalogPath string, extra []string) ([]string, error) {
+	if err := codexValidateExtraArgs(extra); err != nil {
+		return nil, err
+	}
 
-func (c *CodexVL) args(model string, extra []string) []string {
-	args := []string{"--profile", codexVLProfileName, "--dangerously-bypass-approvals-and-sandbox"}
+	args := []string{"--profile", codexProfileName}
+	for _, override := range codexManagedConfigOverrides(modelCatalogPath) {
+		args = append(args, "-c", override)
+	}
+	if envconfig.IsTermux() {
+		// Termux runs headless/autonomous; per-action approval prompts and
+		// the sandbox are unavailable on Android.
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	}
 	if model != "" {
 		args = append(args, "-m", model)
 	}
 	args = append(args, extra...)
-	return args
+	return args, nil
 }
 
-func (c *CodexVL) Run(model string, args []string) error {
+func (c *CodexVL) Run(model string, models []LaunchModel, args []string) error {
 	codexVL, err := c.findCommand()
 	if err != nil {
-		return fmt.Errorf("codex-vl is not installed\n\nInstall with:\n  npm install -g @mmmbuto/codex-vl  (recommended on Termux)")
+		return fmt.Errorf("codex-vl is not installed\n\nInstall with:\n  npm install -g @mmmbuto/codex-vl")
 	}
 
 	if err := checkCodexVLVersion(codexVL); err != nil {
 		return err
 	}
 
-	if err := ensureCodexVLConfig(); err != nil {
+	if err := ensureCodexConfig(model, models); err != nil {
 		return fmt.Errorf("failed to configure codex-vl: %w", err)
 	}
 
-	cmd := codexVL.Command(c.args(model, args)...)
+	catalogPath, err := codexModelCatalogPath()
+	if err != nil {
+		return fmt.Errorf("failed to configure codex-vl: %w", err)
+	}
+
+	codexArgs, err := c.args(model, catalogPath, args)
+	if err != nil {
+		return fmt.Errorf("failed to configure codex-vl: %w", err)
+	}
+
+	cmd := codexVL.Command(codexArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -58,12 +80,8 @@ func (c *CodexVL) findPath() (string, error) {
 	return findCommandPath("codex-vl", termuxPackageEntrypoints("@mmmbuto/codex-vl", "bin/codex.js")...)
 }
 
-// ensureCodexVLConfig writes the ollama-launch profile to ~/.codex/config.toml.
-// Codex VL shares the same config format as upstream Codex.
-func ensureCodexVLConfig() error {
-	return ensureCodexConfig()
-}
-
+// checkCodexVLVersion verifies the installed codex-vl supports the managed
+// profile and model catalog flow (upstream Codex >= 0.134.0 baseline).
 func checkCodexVLVersion(codexVL resolvedCommand) error {
 	out, err := codexVL.Command("--version").Output()
 	if err != nil {
@@ -76,16 +94,8 @@ func checkCodexVLVersion(codexVL resolvedCommand) error {
 	}
 
 	rawVersion := fields[len(fields)-1]
-	numericPart := rawVersion
-	if idx := strings.Index(rawVersion, "-"); idx > 0 {
-		numericPart = rawVersion[:idx]
+	if err := checkTermuxCodexMinVersion(rawVersion, "v0.134.0"); err != nil {
+		return fmt.Errorf("codex-vl %w, update with: npm update -g @mmmbuto/codex-vl", err)
 	}
-	version := "v" + numericPart
-	minVersion := "v0.130.0"
-
-	if semver.Compare(version, minVersion) < 0 {
-		return fmt.Errorf("codex-vl version %s is too old (minimum %s)", rawVersion, "0.130.0")
-	}
-
 	return nil
 }

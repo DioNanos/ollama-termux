@@ -16,6 +16,7 @@ import (
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/cmd/config"
+	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
 	internalcloud "github.com/ollama/ollama/internal/cloud"
 	"github.com/ollama/ollama/internal/modelref"
@@ -159,6 +160,14 @@ func OpenBrowser(url string) {
 	case "darwin":
 		_ = exec.Command("open", url).Start()
 	case "linux":
+		// Termux has no display server; route through termux-open-url so
+		// browser/OAuth flows reach the Android system browser.
+		if envconfig.IsTermux() {
+			if cmd, err := termuxOpenURLCommand(url); err == nil {
+				_ = cmd.Run()
+			}
+			return
+		}
 		// Skip on headless systems where no display server is available
 		if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
 			return

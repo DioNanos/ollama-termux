@@ -10,12 +10,15 @@ import (
 var (
 	integrations       map[string]Runner
 	integrationAliases map[string]bool
-	integrationOrder   = launcherIntegrationOrder
+	integrationOrder   []string
 )
 
 func init() {
 	integrations = buildTestIntegrations()
 	integrationAliases = buildTestIntegrationAliases()
+	// Read the order inside init so the fork's codex-vl registration in
+	// termux.go (whose init runs first by file order) is included.
+	integrationOrder = launcherIntegrationOrder
 }
 
 func buildTestIntegrations() map[string]Runner {

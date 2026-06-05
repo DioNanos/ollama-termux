@@ -23,6 +23,14 @@ type Qwen struct{}
 func (q *Qwen) String() string { return "Qwen Code" }
 
 func (q *Qwen) findPath() (string, error) {
+	if envconfig.IsTermux() {
+		// Termux installs come from @mmmbuto/qwen-code-termux; resolve npm
+		// global entrypoints even when PATH is incomplete.
+		if spec, err := qwenTermuxCommand(); err == nil {
+			return spec.Path, nil
+		}
+	}
+
 	if p, err := exec.LookPath("qwen"); err == nil {
 		return p, nil
 	}
@@ -228,7 +236,7 @@ func (q *Qwen) Run(model string, _ []LaunchModel, args []string) error {
 		return fmt.Errorf("qwen is not installed: %w", err)
 	}
 
-	cmd := exec.Command(qwenPath, qwenLaunchArgs(model, args)...)
+	cmd := qwenExecCommand(qwenPath, qwenLaunchArgs(model, args))
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
