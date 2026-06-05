@@ -383,6 +383,10 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// Default behavior: let llama-server auto-detect.
 	if launch.opts.NumThread > 0 {
 		params = append(params, "-t", strconv.Itoa(launch.opts.NumThread))
+	} else if t := termuxDefaultThreads(); t > 0 {
+		// Termux: pin inference to the big cores to avoid big.LITTLE
+		// thermal throttling.
+		params = append(params, "-t", strconv.Itoa(t))
 	}
 
 	params = appendMainGPUArgs(params, launch.opts)
@@ -481,6 +485,12 @@ func llamaServerLibraryPaths(exe string, gpuLibs []string, envUpdates map[string
 				envUpdates["GGML_BACKEND_PATH"] = backend
 			}
 		}
+		addPath(dir)
+	}
+	// Termux: libc++_shared.so lives in $PREFIX/lib and the Android system
+	// Vulkan loader in /system/lib64; both must be reachable by the
+	// llama-server subprocess.
+	for _, dir := range termuxRunnerLibraryPaths() {
 		addPath(dir)
 	}
 	if libraryPath, ok := os.LookupEnv(llamaServerLibraryPathEnv()); ok {

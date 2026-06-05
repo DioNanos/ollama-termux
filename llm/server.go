@@ -115,6 +115,9 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 		opts.NumCtx = int(trainCtx)
 	}
 
+	// Termux: clamp the context window to what phone memory can hold.
+	limitTermuxContext(&opts, systemInfo)
+
 	kvct := strings.ToLower(envconfig.KvCacheType())
 	return NewLlamaServerRunner(gpus, modelPath, f, adapters, projectors, opts, numParallel, kvct, config)
 }
