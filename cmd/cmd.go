@@ -2058,6 +2058,17 @@ func initializeKeypair() error {
 }
 
 func checkServerHeartbeat(cmd *cobra.Command, _ []string) error {
+	if envconfig.IsTermux() {
+		// Termux: the server may have been started by a supervisor that never
+		// went through RunServer (or with a stripped HOME), leaving the
+		// registry keypair missing. auth.Sign/GetPublicKey read the key
+		// lazily from the shared $HOME, so creating it here heals pulls and
+		// cloud plan checks served by an already-running server.
+		if err := initializeKeypair(); err != nil {
+			return err
+		}
+	}
+
 	client, err := api.ClientFromEnvironment()
 	if err != nil {
 		return err

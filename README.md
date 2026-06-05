@@ -53,6 +53,7 @@ pkg install nodejs-lts -y
 
 # Current release line (0.30.x, llama-server runtime) — next channel
 npm install -g @mmmbuto/ollama-termux@next
+ollama-termux   # run the installer once
 
 # Previous stable line (0.24.x)
 npm install -g @mmmbuto/ollama-termux@latest
@@ -61,10 +62,13 @@ npm install -g @mmmbuto/ollama-termux@latest
 The `next` tag carries the current 0.30.x release line while it completes
 device validation; `latest` stays on the previous line until promotion.
 
-The npm package is an installer wrapper. During `postinstall`, it downloads the
+The npm package is an installer wrapper: `ollama-termux` downloads the
 matching GitHub Release asset, verifies SHA256, and installs `bin/ollama` +
 the `lib/ollama` runtime (llama-server + backend libraries) under the Termux
-prefix.
+prefix. Recent npm versions block `postinstall` scripts by default
+(allow-scripts), so running `ollama-termux` after the install is the
+reliable path; on older npm the postinstall hook does the same thing
+automatically.
 
 ---
 
