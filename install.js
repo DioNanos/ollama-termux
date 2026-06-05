@@ -225,10 +225,10 @@ async function main() {
   log('  ollama serve &');
   log('  ollama pull qwen3.5:4b');
   log('  ollama pull gemma4:e4b');
-  log('  ollama launch codex-vl --model gemma4:e4b');
   log('  ollama launch codex --model qwen3.5:4b');
-  log('  ollama launch qwen --model gemma4:e2b');
-  log('  ollama launch hermes');
+  log('  ollama launch codex-vl --model gemma4:e4b');
+  log('  ollama launch qwen --model qwen3.5:4b');
+  log('  ollama launch pi');
 }
 
 main().catch((e) => {
