@@ -49,7 +49,8 @@ func (p *Pi) Run(_ string, _ []LaunchModel, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "\n%sLaunching Pi...%s\n\n", ansiGray, ansiReset)
 
-	cmd := exec.Command(bin, args...)
+	// Termux: pi and npm are node scripts that Go cannot execve directly.
+	cmd := termuxExec(bin, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -183,7 +184,7 @@ func uninstallLegacyPiPackageWithPrefix(prefix string) error {
 }
 
 func runQuietCommand(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+	cmd := termuxExec(name, args...)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return nil
@@ -310,7 +311,7 @@ func npmPackageInstalled(pkg string) (bool, error) {
 }
 
 func npmPackageInstalledWithPrefix(pkg, prefix string) (bool, error) {
-	cmd := exec.Command("npm", npmArgs(prefix, "ls", "-g", pkg, "--depth=0", "--json")...)
+	cmd := termuxExec("npm", npmArgs(prefix, "ls", "-g", pkg, "--depth=0", "--json")...)
 	out, err := cmd.Output()
 
 	var payload struct {
@@ -366,7 +367,7 @@ func ensurePiWebSearchPackage(bin string) {
 
 	if !pkg.installed {
 		fmt.Fprintf(os.Stderr, "%sInstalling %s...%s\n", ansiGray, piWebSearchPkg, ansiReset)
-		cmd := exec.Command(bin, "install", piWebSearchSource)
+		cmd := termuxExec(bin, "install", piWebSearchSource)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
@@ -384,7 +385,7 @@ func ensurePiWebSearchPackage(bin string) {
 	}
 
 	fmt.Fprintf(os.Stderr, "%sUpdating %s...%s\n", ansiGray, piWebSearchPkg, ansiReset)
-	cmd := exec.Command(bin, "update", piWebSearchSource)
+	cmd := termuxExec(bin, "update", piWebSearchSource)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -414,7 +415,7 @@ type piPackageListEntry struct {
 }
 
 func piPackageInfo(bin, source string) (piPackageListEntry, error) {
-	cmd := exec.Command(bin, "list")
+	cmd := termuxExec(bin, "list")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))

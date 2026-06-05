@@ -150,7 +150,7 @@ func termuxEnsureNpmIntegration(display, pkg string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "\nInstalling %s...\n", display)
-	cmd := exec.Command("npm", "install", "-g", pkg+"@latest")
+	cmd := termuxExec("npm", "install", "-g", pkg+"@latest")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
@@ -185,6 +185,20 @@ Examples:
   ollama launch qwen
   ollama launch pi
   ollama launch codex -- -p myprofile (pass extra args to integration)`
+}
+
+// termuxExec builds an exec.Cmd for name, routing through the node
+// interpreter on Termux when name resolves to a script. Go spawns processes
+// with the raw execve syscall, bypassing the termux-exec shebang rewrite, so
+// npm-style `#!/usr/bin/env node` scripts cannot be executed directly on
+// Android (/usr/bin/env does not exist). Off Termux this is exec.Command.
+func termuxExec(name string, args ...string) *exec.Cmd {
+	if envconfig.IsTermux() {
+		if rc, err := resolveCommand(name); err == nil {
+			return rc.Command(args...)
+		}
+	}
+	return exec.Command(name, args...)
 }
 
 // codexTermuxCommand resolves the codex binary on Termux, including npm

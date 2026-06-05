@@ -162,3 +162,44 @@ func TestCodexArgsTermuxAutoApprove(t *testing.T) {
 		}
 	})
 }
+
+func TestTermuxExec(t *testing.T) {
+	dir := t.TempDir()
+
+	nodeScript := filepath.Join(dir, "npmlike")
+	if err := os.WriteFile(nodeScript, []byte("#!/usr/bin/env node\nconsole.log('hi')\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shScript := filepath.Join(dir, "shlike")
+	if err := os.WriteFile(shScript, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("on termux node scripts run through node", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "0.118.0")
+		cmd := termuxExec(nodeScript, "install")
+		base := filepath.Base(cmd.Args[0])
+		if base != "node" {
+			t.Errorf("expected node interpreter prefix, got args %v", cmd.Args)
+		}
+		if !slices.Contains(cmd.Args, nodeScript) || !slices.Contains(cmd.Args, "install") {
+			t.Errorf("script path or args missing: %v", cmd.Args)
+		}
+	})
+
+	t.Run("on termux non-node scripts run directly", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "0.118.0")
+		cmd := termuxExec(shScript)
+		if cmd.Args[0] != shScript {
+			t.Errorf("expected direct exec, got %v", cmd.Args)
+		}
+	})
+
+	t.Run("off termux plain exec.Command", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "")
+		cmd := termuxExec(nodeScript, "install")
+		if cmd.Args[0] != nodeScript {
+			t.Errorf("expected plain exec off Termux, got %v", cmd.Args)
+		}
+	})
+}
