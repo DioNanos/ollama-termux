@@ -141,6 +141,37 @@ else
         exit 1
     fi
 
+    # Vulkan cross-build hints: find_package(Vulkan) cannot resolve under the
+    # NDK toolchain on its own. The NDK sysroot ships vulkan/*.h and
+    # libvulkan.so but not the C++ wrapper (vulkan.hpp), which ggml-vulkan
+    # needs, so build an include overlay: NDK C headers + host-only .hpp.
+    # Never add /usr/include itself to the Android include path; that leaks
+    # glibc headers into the NDK sysroot.
+    if [ "$BUILD_VULKAN" = "1" ]; then
+        VULKAN_HOST_INCLUDE="${VULKAN_HOST_INCLUDE:-/usr/include}"
+        VULKAN_NDK_INCLUDE="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include"
+        VULKAN_NDK_LIBRARY="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/28/libvulkan.so"
+        VULKAN_INCLUDE_OVERLAY="$BUILD_DIR/vulkan-include-overlay"
+
+        if [ ! -f "$VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp" ]; then
+            echo "ERROR: vulkan.hpp not found at $VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp"
+            echo "       install libvulkan-dev or LunarG SDK on the build host"
+            exit 1
+        fi
+        if [ ! -f "$VULKAN_NDK_INCLUDE/vulkan/vulkan.h" ] || [ ! -f "$VULKAN_NDK_LIBRARY" ]; then
+            echo "ERROR: NDK Vulkan headers/library not found under $NDK_ROOT"
+            exit 1
+        fi
+
+        rm -rf "$VULKAN_INCLUDE_OVERLAY"
+        mkdir -p "$VULKAN_INCLUDE_OVERLAY/vulkan"
+        cp "$VULKAN_NDK_INCLUDE"/vulkan/*.h "$VULKAN_INCLUDE_OVERLAY/vulkan/"
+        if [ -d "$VULKAN_NDK_INCLUDE/vk_video" ]; then
+            cp -R "$VULKAN_NDK_INCLUDE/vk_video" "$VULKAN_INCLUDE_OVERLAY/"
+        fi
+        cp "$VULKAN_HOST_INCLUDE"/vulkan/*.hpp "$VULKAN_INCLUDE_OVERLAY/vulkan/"
+    fi
+
     server_dir="$BUILD_DIR/llama-server"
     echo "--- Building llama-server (llama.cpp $(cat "$ROOT_DIR/LLAMA_CPP_VERSION")) ---"
 
@@ -167,7 +198,12 @@ else
         )
     fi
     if [ "$BUILD_VULKAN" = "1" ]; then
-        cmake_args+=(-DGGML_VULKAN=ON)
+        cmake_args+=(
+            -DGGML_VULKAN=ON
+            -DVulkan_INCLUDE_DIR="$VULKAN_INCLUDE_OVERLAY"
+            -DVulkan_LIBRARY="$VULKAN_NDK_LIBRARY"
+            -DVulkan_GLSLC_EXECUTABLE="$(command -v glslc)"
+        )
     fi
 
     cmake "${cmake_args[@]}"
