@@ -160,6 +160,33 @@ func termuxEnsureNpmIntegration(display, pkg string) error {
 	return nil
 }
 
+// launchCommandLong returns the `ollama launch` long help. On Termux the
+// upstream integration list would be misleading, so it is replaced with the
+// verified Termux set.
+func launchCommandLong(upstream string) string {
+	if !envconfig.IsTermux() {
+		return upstream
+	}
+	return `Launch the Ollama interactive menu, or directly launch a specific integration.
+
+Without arguments, this is equivalent to running 'ollama' directly.
+Flags and extra arguments require an integration name.
+
+Supported integrations on Termux:
+  codex     Codex (Termux fork)
+  codex-vl  Codex VL — Vivling-enhanced fork
+  qwen      Qwen Code (Termux fork)
+  pi        Pi
+
+Examples:
+  ollama launch
+  ollama launch codex --model <model>
+  ollama launch codex-vl --model <model>
+  ollama launch qwen
+  ollama launch pi
+  ollama launch codex -- -p myprofile (pass extra args to integration)`
+}
+
 // codexTermuxCommand resolves the codex binary on Termux, including npm
 // global .js entrypoints that need the node interpreter.
 func codexTermuxCommand() (resolvedCommand, error) {

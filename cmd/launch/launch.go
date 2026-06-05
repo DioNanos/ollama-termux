@@ -280,7 +280,7 @@ func LaunchCmd(checkServerHeartbeat func(cmd *cobra.Command, args []string) erro
 	cmd := &cobra.Command{
 		Use:   "launch [INTEGRATION] [-- [EXTRA_ARGS...]]",
 		Short: "Launch the Ollama menu or an integration",
-		Long: `Launch the Ollama interactive menu, or directly launch a specific integration.
+		Long: launchCommandLong(`Launch the Ollama interactive menu, or directly launch a specific integration.
 
 Without arguments, this is equivalent to running 'ollama' directly.
 Flags and extra arguments require an integration name.
@@ -312,7 +312,7 @@ Examples:
   ollama launch hermes-desktop
   ollama launch droid --config (does not auto-launch)
   ollama launch codex --restore
-  ollama launch codex -- --sandbox workspace-write`,
+  ollama launch codex -- --sandbox workspace-write`),
 		Args: cobra.ArbitraryArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if restoreFlag || launchCommandCanSkipHeartbeat(args) {
