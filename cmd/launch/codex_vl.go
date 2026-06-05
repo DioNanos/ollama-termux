@@ -9,8 +9,8 @@ import (
 )
 
 // CodexVL implements Runner for the Codex VL integration.
-// Codex VL is the Vivling-enhanced fork of Codex maintained at
-// git@forge:dag/codex-vl.git and published as @mmmbuto/codex-vl on npm.
+// Codex VL is the Vivling-enhanced fork of Codex published as
+// @mmmbuto/codex-vl on npm (https://github.com/DioNanos/codex-vl).
 // It shares the upstream Codex config format, so the ollama-launch profile
 // and model catalog written by ensureCodexConfig are reused as-is.
 type CodexVL struct{}

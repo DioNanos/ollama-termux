@@ -51,12 +51,20 @@ behavior.
 pkg update && pkg upgrade -y
 pkg install nodejs-lts -y
 
+# Current release line (0.30.x, llama-server runtime) — next channel
+npm install -g @mmmbuto/ollama-termux@next
+
+# Previous stable line (0.24.x)
 npm install -g @mmmbuto/ollama-termux@latest
 ```
 
+The `next` tag carries the current 0.30.x release line while it completes
+device validation; `latest` stays on the previous line until promotion.
+
 The npm package is an installer wrapper. During `postinstall`, it downloads the
 matching GitHub Release asset, verifies SHA256, and installs `bin/ollama` +
-`lib/ollama` backends under the Termux prefix.
+the `lib/ollama` runtime (llama-server + backend libraries) under the Termux
+prefix.
 
 ---
 
