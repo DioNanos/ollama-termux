@@ -226,16 +226,6 @@ else
             -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3"
         )
     fi
-    if [ "$BUILD_VULKAN" = "1" ]; then
-        cmake_args+=(
-            -DGGML_VULKAN=ON
-            -DVulkan_INCLUDE_DIR="$VULKAN_INCLUDE_OVERLAY"
-            -DVulkan_LIBRARY="$VULKAN_NDK_LIBRARY"
-            -DVulkan_GLSLC_EXECUTABLE="$(command -v glslc)"
-            -DSPIRV-Headers_DIR="$SPIRV_HEADERS_DIR"
-        )
-    fi
-
     cmake "${cmake_args[@]}"
     cmake --build "$server_dir" -- -l "$(nproc)"
     cmake --install "$server_dir" --component llama-server --strip
@@ -247,6 +237,47 @@ else
     echo "  Installed runtime:"
     ls -1 "$DIST_DIR/lib/ollama" | sed 's/^/    /'
     echo ""
+
+    # --- Step 1b: Optional Vulkan backend (separate pass, upstream model) ---
+    #
+    # Mirrors the upstream `vulkan` preset: a dedicated configure with
+    # OLLAMA_RUNNER_DIR=vulkan + OLLAMA_GPU_BACKEND=vulkan installs ONLY the
+    # libggml-vulkan backend into lib/ollama/vulkan/, which the runner
+    # discovers at runtime (GGML_BACKEND_DL).
+    if [ "$BUILD_VULKAN" = "1" ]; then
+        vulkan_dir="$BUILD_DIR/llama-server-vulkan"
+        echo "--- Building Vulkan backend (llama.cpp $(cat "$ROOT_DIR/LLAMA_CPP_VERSION")) ---"
+
+        cmake -S "$ROOT_DIR/llama/server" -B "$vulkan_dir" \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DANDROID_ARM_NEON=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DGGML_BACKEND_DL=ON \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=OFF \
+            -DGGML_VULKAN=ON \
+            -DOLLAMA_RUNNER_DIR=vulkan \
+            -DOLLAMA_GPU_BACKEND=vulkan \
+            -DVulkan_INCLUDE_DIR="$VULKAN_INCLUDE_OVERLAY" \
+            -DVulkan_LIBRARY="$VULKAN_NDK_LIBRARY" \
+            -DVulkan_GLSLC_EXECUTABLE="$(command -v glslc)" \
+            -DSPIRV-Headers_DIR="$SPIRV_HEADERS_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$DIST_DIR" \
+            -GNinja
+        cmake --build "$vulkan_dir" -- -l "$(nproc)"
+        cmake --install "$vulkan_dir" --component llama-server --strip
+
+        if ! ls "$DIST_DIR/lib/ollama/vulkan/"libggml-vulkan*.so >/dev/null 2>&1; then
+            echo "ERROR: libggml-vulkan missing from $DIST_DIR/lib/ollama/vulkan after install"
+            exit 1
+        fi
+        echo "  Installed Vulkan backend:"
+        ls -1 "$DIST_DIR/lib/ollama/vulkan" | sed 's/^/    /'
+        echo ""
+    fi
 fi
 
 # --- Step 2: Cross-compile Go binary ---
