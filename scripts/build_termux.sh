@@ -171,6 +171,17 @@ else
         fi
         cp "$VULKAN_HOST_INCLUDE"/vulkan/*.hpp "$VULKAN_INCLUDE_OVERLAY/vulkan/"
 
+        # ggml-vulkan.cpp includes <spirv/unified1/spirv.hpp>. The host
+        # /usr/include is an implicit dir CMake filters out under the NDK
+        # toolchain, so stage the SPIRV headers inside the overlay too.
+        SPIRV_HOST_INCLUDE="${SPIRV_HOST_INCLUDE:-/usr/include/spirv}"
+        if [ ! -f "$SPIRV_HOST_INCLUDE/unified1/spirv.hpp" ]; then
+            echo "ERROR: spirv/unified1/spirv.hpp not found at $SPIRV_HOST_INCLUDE"
+            echo "       install spirv-headers (apt) or set SPIRV_HOST_INCLUDE"
+            exit 1
+        fi
+        cp -R "$SPIRV_HOST_INCLUDE" "$VULKAN_INCLUDE_OVERLAY/"
+
         # ggml-vulkan also needs the host SPIRV-Headers cmake package; the
         # Android toolchain re-roots find_package, so locate the config on
         # the host and pass SPIRV-Headers_DIR explicitly.
