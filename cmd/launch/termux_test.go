@@ -203,3 +203,31 @@ func TestTermuxExec(t *testing.T) {
 		}
 	})
 }
+
+func TestResolvedCommandSystemLinkerExec(t *testing.T) {
+	t.Setenv("TERMUX_VERSION", "0.118.0")
+	t.Setenv("TERMUX_EXEC__SYSTEM_LINKER_EXEC", "force")
+
+	script := filepath.Join(t.TempDir(), "npmlike")
+	if err := os.WriteFile(script, []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	rc, err := resolveCommand(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := rc.Command("install")
+	if cmd.Args[0] != "/system/bin/linker64" {
+		t.Errorf("expected system linker argv[0], got %v", cmd.Args)
+	}
+	if filepath.Base(cmd.Args[1]) != "node" || cmd.Args[2] != script {
+		t.Errorf("expected linker64 node script, got %v", cmd.Args)
+	}
+
+	t.Setenv("TERMUX_EXEC__SYSTEM_LINKER_EXEC", "disable")
+	cmd = rc.Command("install")
+	if cmd.Args[0] == "/system/bin/linker64" {
+		t.Errorf("did not expect linker routing when disabled, got %v", cmd.Args)
+	}
+}

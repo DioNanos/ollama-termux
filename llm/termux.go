@@ -3,6 +3,7 @@ package llm
 import (
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -98,6 +99,17 @@ func countBigCores() int {
 		big = 1
 	}
 	return big
+}
+
+// termuxRunnerCommand builds the llama-server invocation. On Play-Store
+// Termux (targetSdk >= 29) SELinux denies direct execve of app data files
+// and Go bypasses the termux-exec libc shim, so the subprocess is started
+// through the system linker.
+func termuxRunnerCommand(exe string, params []string) *exec.Cmd {
+	if envconfig.TermuxSystemLinkerExec() {
+		return exec.Command(envconfig.TermuxSystemLinker, append([]string{exe}, params...)...)
+	}
+	return exec.Command(exe, params...)
 }
 
 // termuxRunnerLibraryPaths returns extra library directories for the

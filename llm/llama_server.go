@@ -394,7 +394,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	params = appendContextShiftArgs(params, launch.opts, launch.config.ContextShift)
 
 	// Set up library paths for GPU backend discovery
-	cmd = exec.Command(exe, params...)
+	cmd = termuxRunnerCommand(exe, params)
 
 	if out != nil {
 		// os/exec serializes Write calls when stdout and stderr share a writer.
@@ -492,6 +492,12 @@ func llamaServerLibraryPaths(exe string, gpuLibs []string, envUpdates map[string
 	// llama-server subprocess.
 	for _, dir := range termuxRunnerLibraryPaths() {
 		addPath(dir)
+	}
+	if envconfig.TermuxSystemLinkerExec() && envUpdates["GGML_BACKEND_PATH"] == "" {
+		// Under system-linker exec /proc/self/exe points at linker64, which
+		// breaks ggml's executable-relative backend discovery; pin the
+		// backend directory explicitly.
+		envUpdates["GGML_BACKEND_PATH"] = llamaDir
 	}
 	if libraryPath, ok := os.LookupEnv(llamaServerLibraryPathEnv()); ok {
 		for _, dir := range filepath.SplitList(libraryPath) {
