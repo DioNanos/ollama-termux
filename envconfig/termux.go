@@ -2,6 +2,7 @@ package envconfig
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -53,4 +54,26 @@ func TermuxSystemLinkerExec() bool {
 		return false
 	}
 	return true
+}
+
+// TermuxRealExecutable returns the path of the current executable. When the
+// process was started through the system linker, /proc/self/exe (and thus
+// os.Executable) points at linker64 instead of the real binary; termux-exec
+// publishes the real path in TERMUX_EXEC__PROC_SELF_EXE, with argv[0] as the
+// fallback (the linker rewrites it to the loaded program).
+func TermuxRealExecutable() (string, error) {
+	exe, err := os.Executable()
+
+	if IsTermux() {
+		if p := os.Getenv("TERMUX_EXEC__PROC_SELF_EXE"); p != "" {
+			return p, nil
+		}
+		if err == nil && exe == TermuxSystemLinker && len(os.Args) > 0 {
+			if abs, absErr := filepath.Abs(os.Args[0]); absErr == nil {
+				return abs, nil
+			}
+		}
+	}
+
+	return exe, err
 }

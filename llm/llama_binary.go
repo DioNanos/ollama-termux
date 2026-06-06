@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/ml"
 )
 
@@ -20,7 +21,9 @@ type llamaCppBinarySearch struct {
 }
 
 func defaultLlamaCppBinarySearch() llamaCppBinarySearch {
-	executable, _ := os.Executable()
+	// Termux: see ml.LibOllamaPath — resolve the real binary under
+	// system-linker exec.
+	executable, _ := envconfig.TermuxRealExecutable()
 	if executable != "" {
 		if eval, err := filepath.EvalSymlinks(executable); err == nil {
 			executable = eval

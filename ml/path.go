@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/ollama/ollama/envconfig"
 )
 
 type libOllamaPathSearch struct {
@@ -17,7 +19,9 @@ type libOllamaPathSearch struct {
 // libraries. GPU-specific libraries live in backend subdirectories such as
 // cuda_v12, rocm_v7_2, vulkan, and mlx_cuda_v13.
 var LibOllamaPath = func() string {
-	exe, err := os.Executable()
+	// Termux: under system-linker exec os.Executable() points at linker64;
+	// resolve the real binary so lib/ollama discovery keeps working.
+	exe, err := envconfig.TermuxRealExecutable()
 	if err != nil {
 		return ""
 	}

@@ -1,6 +1,9 @@
 package envconfig
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestTermuxSystemLinkerExec(t *testing.T) {
 	cases := []struct {
@@ -38,6 +41,39 @@ func TestTermuxSystemLinkerExec(t *testing.T) {
 		want := false // linker64 absent on the build host
 		if got := TermuxSystemLinkerExec(); got != want {
 			t.Errorf("TermuxSystemLinkerExec() = %v, want %v (host without linker64)", got, want)
+		}
+	})
+}
+
+func TestTermuxRealExecutable(t *testing.T) {
+	t.Run("env override wins on termux", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "0.118.0")
+		t.Setenv("TERMUX_EXEC__PROC_SELF_EXE", "/data/data/com.termux/files/usr/lib/ollama/ollama")
+		got, err := TermuxRealExecutable()
+		if err != nil || got != "/data/data/com.termux/files/usr/lib/ollama/ollama" {
+			t.Errorf("got %q, %v", got, err)
+		}
+	})
+
+	t.Run("off termux env is ignored", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "")
+		t.Setenv("TERMUX_EXEC__PROC_SELF_EXE", "/spoofed/path")
+		got, err := TermuxRealExecutable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == "/spoofed/path" {
+			t.Errorf("env must be ignored off Termux, got %q", got)
+		}
+	})
+
+	t.Run("on termux without env falls back to os.Executable", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "0.118.0")
+		t.Setenv("TERMUX_EXEC__PROC_SELF_EXE", "")
+		want, _ := os.Executable()
+		got, err := TermuxRealExecutable()
+		if err != nil || got != want {
+			t.Errorf("got %q, want %q (err %v)", got, want, err)
 		}
 	})
 }

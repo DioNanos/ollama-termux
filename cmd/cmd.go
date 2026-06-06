@@ -2132,12 +2132,17 @@ func ensureServerRunning(ctx context.Context) error {
 	}
 
 	// Server not running, start it in the background
-	exe, err := os.Executable()
+	exe, err := envconfig.TermuxRealExecutable()
 	if err != nil {
 		return fmt.Errorf("could not find executable: %w", err)
 	}
 
 	serverCmd := exec.CommandContext(ctx, exe, "serve")
+	if envconfig.TermuxSystemLinkerExec() {
+		// Play-Store Termux: SELinux denies direct execve of app data files;
+		// Go bypasses the termux-exec shim, so route through the linker.
+		serverCmd = exec.CommandContext(ctx, envconfig.TermuxSystemLinker, exe, "serve")
+	}
 	serverCmd.Env = os.Environ()
 	serverCmd.SysProcAttr = backgroundServerSysProcAttr()
 	if err := serverCmd.Start(); err != nil {
