@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/ollama/ollama/envconfig"
 )
 
 type resolvedCommand struct {
@@ -13,11 +15,13 @@ type resolvedCommand struct {
 }
 
 func (r resolvedCommand) Command(args ...string) *exec.Cmd {
-	if len(r.Prefix) == 0 {
-		return exec.Command(r.Path, args...)
-	}
-
 	argv := append(append(append([]string{}, r.Prefix...), r.Path), args...)
+	if envconfig.TermuxSystemLinkerExec() {
+		// Play-Store Termux: SELinux denies direct execve of app data files
+		// and Go bypasses the termux-exec libc shim, so route through the
+		// system linker explicitly. All resolved paths are absolute.
+		argv = append([]string{envconfig.TermuxSystemLinker}, argv...)
+	}
 	return exec.Command(argv[0], argv[1:]...)
 }
 

@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ type launcherEditorRunner struct {
 	ranModel string
 }
 
-func (r *launcherEditorRunner) Run(model string, args []string) error {
+func (r *launcherEditorRunner) Run(model string, _ []LaunchModel, args []string) error {
 	r.ranModel = model
 	return nil
 }
@@ -33,8 +34,8 @@ func (r *launcherEditorRunner) String() string { return "LauncherEditor" }
 
 func (r *launcherEditorRunner) Paths() []string { return r.paths }
 
-func (r *launcherEditorRunner) Edit(models []string) error {
-	r.edited = append(r.edited, append([]string(nil), models...))
+func (r *launcherEditorRunner) Edit(models []LaunchModel) error {
+	r.edited = append(r.edited, launchModelNames(models))
 	return nil
 }
 
@@ -44,7 +45,7 @@ type launcherSingleRunner struct {
 	ranModel string
 }
 
-func (r *launcherSingleRunner) Run(model string, args []string) error {
+func (r *launcherSingleRunner) Run(model string, _ []LaunchModel, args []string) error {
 	r.ranModel = model
 	return nil
 }
@@ -82,7 +83,7 @@ type launcherManagedRunner struct {
 	skipModelReadiness   bool
 }
 
-func (r *launcherManagedRunner) Run(model string, args []string) error {
+func (r *launcherManagedRunner) Run(model string, _ []LaunchModel, args []string) error {
 	r.ranModel = model
 	return nil
 }
@@ -132,8 +133,8 @@ type launcherManagedListRunner struct {
 	configuredModelLists [][]string
 }
 
-func (r *launcherManagedListRunner) ConfigureWithModels(primary string, models []string) error {
-	r.configuredModelLists = append(r.configuredModelLists, append([]string(nil), models...))
+func (r *launcherManagedListRunner) ConfigureWithModels(primary string, models []LaunchModel) error {
+	r.configuredModelLists = append(r.configuredModelLists, launchModelNames(models))
 	return r.Configure(primary)
 }
 
@@ -529,6 +530,81 @@ func TestLaunchIntegration_ManagedSingleIntegrationPrintsConfigurationSuccessAft
 	}
 }
 
+func TestLaunchIntegration_QwenConfiguresSingleModel(t *testing.T) {
+	tmpDir := t.TempDir()
+	setLaunchTestHome(t, tmpDir)
+	withInteractiveSession(t, true)
+	withLauncherHooks(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/experimental/model-recommendations":
+			fmt.Fprint(w, `{"recommendations":[]}`)
+		case "/api/tags":
+			fmt.Fprint(w, `{"models":[{"name":"gemma4"}]}`)
+		case "/api/show":
+			fmt.Fprint(w, `{"model_info":{"general.context_length":131072}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("OLLAMA_HOST", srv.URL)
+
+	binDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("failed to create bin dir: %v", err)
+	}
+	writeFakeBinary(t, binDir, "qwen")
+	t.Setenv("PATH", binDir)
+
+	DefaultSingleSelector = func(title string, items []SelectionItem, current string) (string, error) {
+		return "gemma4", nil
+	}
+	DefaultConfirmPrompt = func(prompt string, options ConfirmOptions) (bool, error) {
+		return true, nil
+	}
+
+	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
+		Name:          "qwen",
+		ConfigureOnly: true,
+	}); err != nil {
+		t.Fatalf("LaunchIntegration returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, ".qwen", "settings.json"))
+	if err != nil {
+		t.Fatalf("failed to read qwen config: %v", err)
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("failed to parse qwen config: %v", err)
+	}
+
+	modelCfg := cfg["model"].(map[string]any)
+	if modelCfg["name"] != "gemma4" {
+		t.Fatalf("expected model.name gemma4, got %v", modelCfg["name"])
+	}
+
+	modelProviders := cfg["modelProviders"].(map[string]any)
+	openai := modelProviders["openai"].([]any)
+	if len(openai) != 1 {
+		t.Fatalf("expected one provider, got %d", len(openai))
+	}
+
+	saved, err := config.LoadIntegration("qwen")
+	if err != nil {
+		t.Fatalf("failed to reload qwen integration config: %v", err)
+	}
+	if diff := compareStrings(saved.Models, []string{"gemma4"}); diff != "" {
+		t.Fatalf("saved models mismatch: %s", diff)
+	}
+	if !saved.Onboarded {
+		t.Fatal("expected qwen integration to be marked onboarded")
+	}
+}
+
 func TestLaunchIntegration_ManagedSingleIntegrationDoesNotPrintRestoreHintWhenUnchanged(t *testing.T) {
 	tmpDir := t.TempDir()
 	setLaunchTestHome(t, tmpDir)
@@ -894,7 +970,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationCanConfigureWithModelList(t *
 		t.Fatalf("LaunchIntegration returned error: %v", err)
 	}
 
-	if diff := compareStringSlices(runner.configuredModelLists, [][]string{{"gemma4", "qwen3.5:4b", "gemma4:e4b", "qwen3.5:cloud", "kimi-k2.5:cloud", "glm-5.1:cloud", "minimax-m2.7:cloud", "qwen3:8b"}}); diff != "" {
+	if diff := compareStringSlices(runner.configuredModelLists, [][]string{{"gemma4", "kimi-k2.6:cloud", "qwen3.5:cloud", "glm-5.1:cloud", "minimax-m2.7:cloud", "qwen3.5", "qwen3:8b"}}); diff != "" {
 		t.Fatalf("configured model list mismatch (-want +got):\n%s", diff)
 	}
 	if diff := compareStrings(runner.configured, []string{"gemma4"}); diff != "" {
@@ -1315,17 +1391,17 @@ func TestBuildLauncherState_InstalledAndCloudDisabled(t *testing.T) {
 	setLaunchTestHome(t, tmpDir)
 
 	binDir := t.TempDir()
-	writeFakeBinary(t, binDir, "qwen")
+	writeFakeBinary(t, binDir, "opencode")
 	t.Setenv("PATH", binDir)
 
 	if err := config.SetLastModel("glm-5:cloud"); err != nil {
 		t.Fatalf("failed to save last model: %v", err)
 	}
-	if err := config.SaveIntegration("codex", []string{"glm-5:cloud"}); err != nil {
-		t.Fatalf("failed to save codex config: %v", err)
+	if err := config.SaveIntegration("claude", []string{"glm-5:cloud"}); err != nil {
+		t.Fatalf("failed to save claude config: %v", err)
 	}
-	if err := config.SaveIntegration("qwen", []string{"glm-5:cloud", "llama3.2"}); err != nil {
-		t.Fatalf("failed to save qwen config: %v", err)
+	if err := config.SaveIntegration("opencode", []string{"glm-5:cloud", "llama3.2"}); err != nil {
+		t.Fatalf("failed to save opencode config: %v", err)
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1348,23 +1424,23 @@ func TestBuildLauncherState_InstalledAndCloudDisabled(t *testing.T) {
 		t.Fatalf("BuildLauncherState returned error: %v", err)
 	}
 
-	if !state.Integrations["qwen"].Installed {
-		t.Fatal("expected qwen to be marked installed")
+	if !state.Integrations["opencode"].Installed {
+		t.Fatal("expected opencode to be marked installed")
 	}
-	if state.Integrations["codex"].Installed {
-		t.Fatal("expected codex to be marked not installed")
+	if state.Integrations["claude"].Installed {
+		t.Fatal("expected claude to be marked not installed")
 	}
 	if state.RunModelUsable {
 		t.Fatal("expected saved cloud run model to be unusable when cloud is disabled")
 	}
-	if state.Integrations["codex"].ModelUsable {
-		t.Fatal("expected codex cloud config to be unusable when cloud is disabled")
+	if state.Integrations["claude"].ModelUsable {
+		t.Fatal("expected claude cloud config to be unusable when cloud is disabled")
 	}
-	if state.Integrations["qwen"].ModelUsable {
-		t.Fatal("expected qwen cloud-first config to stay unusable when cloud is disabled")
+	if !state.Integrations["opencode"].ModelUsable {
+		t.Fatal("expected editor config with a remaining local model to stay usable")
 	}
-	if state.Integrations["qwen"].CurrentModel != "glm-5:cloud" {
-		t.Fatalf("expected qwen current model to remain the saved cloud default, got %q", state.Integrations["qwen"].CurrentModel)
+	if state.Integrations["opencode"].CurrentModel != "llama3.2" {
+		t.Fatalf("expected editor current model to fall back to remaining local model, got %q", state.Integrations["opencode"].CurrentModel)
 	}
 }
 
@@ -1399,20 +1475,22 @@ func TestBuildLauncherState_MigratesLegacyOpenclawAliasConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildLauncherState returned error: %v", err)
 	}
-	if state.Integrations["codex"].CurrentModel != "" {
-		t.Fatalf("legacy openclaw alias config should not bleed into supported integrations, got %q", state.Integrations["codex"].CurrentModel)
+	if state.Integrations["openclaw"].CurrentModel != "llama3.2" {
+		t.Fatalf("expected openclaw state to reuse legacy alias config, got %q", state.Integrations["openclaw"].CurrentModel)
 	}
 
-	if _, err := config.LoadIntegration("codex"); err == nil {
-		t.Fatal("unsupported openclaw alias config should not migrate into codex")
-	}
-
-	legacy, err := config.LoadIntegration("clawdbot")
+	migrated, err := config.LoadIntegration("openclaw")
 	if err != nil {
-		t.Fatalf("legacy alias config should remain untouched, got %v", err)
+		t.Fatalf("expected canonical config to be migrated, got %v", err)
 	}
-	if !slices.Equal(legacy.Models, []string{"llama3.2"}) {
-		t.Fatalf("unexpected legacy models: %v", legacy.Models)
+	if !slices.Equal(migrated.Models, []string{"llama3.2"}) {
+		t.Fatalf("unexpected migrated models: %v", migrated.Models)
+	}
+	if migrated.Aliases["primary"] != "llama3.2" {
+		t.Fatalf("expected aliases to migrate, got %v", migrated.Aliases)
+	}
+	if !migrated.Onboarded {
+		t.Fatal("expected onboarding state to migrate to canonical openclaw key")
 	}
 }
 
@@ -1423,8 +1501,8 @@ func TestBuildLauncherState_ToleratesInventoryFailure(t *testing.T) {
 	if err := config.SetLastModel("llama3.2"); err != nil {
 		t.Fatalf("failed to seed last model: %v", err)
 	}
-	if err := config.SaveIntegration("codex", []string{"qwen3:8b"}); err != nil {
-		t.Fatalf("failed to seed codex config: %v", err)
+	if err := config.SaveIntegration("claude", []string{"qwen3:8b"}); err != nil {
+		t.Fatalf("failed to seed claude config: %v", err)
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1452,11 +1530,58 @@ func TestBuildLauncherState_ToleratesInventoryFailure(t *testing.T) {
 	if !state.RunModelUsable {
 		t.Fatal("expected saved run model to remain usable via show fallback")
 	}
+	if state.Integrations["claude"].CurrentModel != "qwen3:8b" {
+		t.Fatalf("expected saved integration model to remain visible, got %q", state.Integrations["claude"].CurrentModel)
+	}
+	if !state.Integrations["claude"].ModelUsable {
+		t.Fatal("expected saved integration model to remain usable via show fallback")
+	}
+}
+
+func TestBuildLauncherState_UsesTagsInventoryWithoutShow(t *testing.T) {
+	tmpDir := t.TempDir()
+	setLaunchTestHome(t, tmpDir)
+
+	if err := config.SetLastModel("llama3.2"); err != nil {
+		t.Fatalf("failed to seed last model: %v", err)
+	}
+	if err := config.SaveIntegration("codex", []string{"qwen3:8b"}); err != nil {
+		t.Fatalf("failed to seed codex config: %v", err)
+	}
+
+	var showCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			fmt.Fprint(w, `{"models":[`+
+				`{"name":"llama3.2","capabilities":["completion","tools"],"context_length":131072,"size":3200000000},`+
+				`{"name":"qwen3:8b","capabilities":["completion","tools"],"context_length":65536,"size":4500000000}`+
+				`]}`)
+		case "/api/show":
+			showCalls.Add(1)
+			fmt.Fprint(w, `{"model_info":{"general.context_length":131072}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("OLLAMA_HOST", srv.URL)
+
+	state, err := BuildLauncherState(context.Background())
+	if err != nil {
+		t.Fatalf("BuildLauncherState returned error: %v", err)
+	}
+	if !state.RunModelUsable {
+		t.Fatal("expected saved run model to be usable from tags inventory")
+	}
 	if state.Integrations["codex"].CurrentModel != "qwen3:8b" {
-		t.Fatalf("expected saved integration model to remain visible, got %q", state.Integrations["codex"].CurrentModel)
+		t.Fatalf("expected codex current model from saved config, got %q", state.Integrations["codex"].CurrentModel)
 	}
 	if !state.Integrations["codex"].ModelUsable {
-		t.Fatal("expected saved integration model to remain usable via show fallback")
+		t.Fatal("expected saved codex model to be usable from tags inventory")
+	}
+	if got := showCalls.Load(); got != 0 {
+		t.Fatalf("show calls = %d, want 0 for broad launcher state", got)
 	}
 }
 
@@ -2028,7 +2153,11 @@ func TestLaunchIntegration_EditorForceConfigure(t *testing.T) {
 	writeFakeBinary(t, binDir, "droid")
 	t.Setenv("PATH", binDir)
 
-	editor := &launcherEditorRunner{paths: []string{"/tmp/settings.json"}}
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(settingsPath, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("failed to seed editor settings: %v", err)
+	}
+	editor := &launcherEditorRunner{paths: []string{settingsPath}}
 	withIntegrationOverride(t, "droid", editor)
 
 	var multiCalled bool
@@ -2138,7 +2267,7 @@ func TestLaunchIntegration_EditorForceConfigure_FloatsCheckedModelsInPicker(t *t
 	if len(gotItems) == 0 {
 		t.Fatal("expected multi selector to receive items")
 	}
-	wantItems := recommendedNames("qwen3.5")
+	wantItems := recommendedNames()
 	if diff := cmp.Diff(wantItems, gotItems); diff != "" {
 		t.Fatalf("expected fixed recommended order in selector items (-want +got):\n%s", diff)
 	}
@@ -2728,7 +2857,11 @@ func TestLaunchIntegration_ConfiguredEditorLaunchSkipsReconfigure(t *testing.T) 
 	writeFakeBinary(t, binDir, "droid")
 	t.Setenv("PATH", binDir)
 
-	editor := &launcherEditorRunner{paths: []string{"/tmp/settings.json"}}
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(settingsPath, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("failed to seed editor settings: %v", err)
+	}
+	editor := &launcherEditorRunner{paths: []string{settingsPath}}
 	withIntegrationOverride(t, "droid", editor)
 
 	if err := config.SaveIntegration("droid", []string{"llama3.2", "qwen3:8b"}); err != nil {
@@ -2771,19 +2904,19 @@ func TestLaunchIntegration_ConfiguredEditorLaunchSkipsReconfigure(t *testing.T) 
 	}
 }
 
-func TestLaunchIntegration_CodexPreservesExistingModelList(t *testing.T) {
+func TestLaunchIntegration_OpenclawPreservesExistingModelList(t *testing.T) {
 	tmpDir := t.TempDir()
 	setLaunchTestHome(t, tmpDir)
 	withLauncherHooks(t)
 
 	binDir := t.TempDir()
-	writeFakeBinary(t, binDir, "codex")
+	writeFakeBinary(t, binDir, "openclaw")
 	t.Setenv("PATH", binDir)
 
 	editor := &launcherEditorRunner{}
-	withIntegrationOverride(t, "codex", editor)
+	withIntegrationOverride(t, "openclaw", editor)
 
-	if err := config.SaveIntegration("codex", []string{"llama3.2", "mistral"}); err != nil {
+	if err := config.SaveIntegration("openclaw", []string{"llama3.2", "mistral"}); err != nil {
 		t.Fatalf("failed to seed config: %v", err)
 	}
 
@@ -2799,22 +2932,90 @@ func TestLaunchIntegration_CodexPreservesExistingModelList(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("OLLAMA_HOST", srv.URL)
 
-	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "codex"}); err != nil {
+	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "openclaw"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
 	}
 	if len(editor.edited) != 0 {
-		t.Fatalf("expected launch to preserve the existing Codex config, got rewrites %v", editor.edited)
+		t.Fatalf("expected launch to preserve the existing OpenClaw config, got rewrites %v", editor.edited)
 	}
 	if editor.ranModel != "llama3.2" {
 		t.Fatalf("expected launch to use first saved model, got %q", editor.ranModel)
 	}
 
-	saved, err := config.LoadIntegration("codex")
+	saved, err := config.LoadIntegration("openclaw")
 	if err != nil {
 		t.Fatalf("failed to reload saved config: %v", err)
 	}
 	if diff := compareStrings(saved.Models, []string{"llama3.2", "mistral"}); diff != "" {
 		t.Fatalf("unexpected saved models (-want +got):\n%s", diff)
+	}
+}
+
+func TestLaunchIntegration_OpenclawInstallsBeforeConfigSideEffects(t *testing.T) {
+	tmpDir := t.TempDir()
+	setLaunchTestHome(t, tmpDir)
+	withLauncherHooks(t)
+
+	t.Setenv("PATH", t.TempDir())
+
+	editor := &launcherEditorRunner{}
+	withIntegrationOverride(t, "openclaw", editor)
+
+	selectorCalled := false
+	DefaultMultiSelector = func(title string, items []SelectionItem, preChecked []string) ([]string, error) {
+		selectorCalled = true
+		return []string{"llama3.2"}, nil
+	}
+
+	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "openclaw"})
+	if err == nil {
+		t.Fatal("expected launch to fail before configuration when OpenClaw is missing")
+	}
+	if !strings.Contains(err.Error(), "required dependencies are missing") {
+		t.Fatalf("expected install prerequisite error, got %v", err)
+	}
+	if selectorCalled {
+		t.Fatal("expected install check to happen before model selection")
+	}
+	if len(editor.edited) != 0 {
+		t.Fatalf("expected no editor writes before install succeeds, got %v", editor.edited)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, ".openclaw", "openclaw.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no OpenClaw config file to be created, stat err = %v", statErr)
+	}
+}
+
+func TestLaunchIntegration_PiInstallsBeforeConfigSideEffects(t *testing.T) {
+	tmpDir := t.TempDir()
+	setLaunchTestHome(t, tmpDir)
+	withLauncherHooks(t)
+
+	t.Setenv("PATH", t.TempDir())
+
+	editor := &launcherEditorRunner{}
+	withIntegrationOverride(t, "pi", editor)
+
+	selectorCalled := false
+	DefaultMultiSelector = func(title string, items []SelectionItem, preChecked []string) ([]string, error) {
+		selectorCalled = true
+		return []string{"llama3.2"}, nil
+	}
+
+	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "pi"})
+	if err == nil {
+		t.Fatal("expected launch to fail before configuration when Pi is missing")
+	}
+	if !strings.Contains(err.Error(), "required dependencies are missing") {
+		t.Fatalf("expected install prerequisite error, got %v", err)
+	}
+	if selectorCalled {
+		t.Fatal("expected install check to happen before model selection")
+	}
+	if len(editor.edited) != 0 {
+		t.Fatalf("expected no editor writes before install succeeds, got %v", editor.edited)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, ".pi", "agent", "models.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no Pi config file to be created, stat err = %v", statErr)
 	}
 }
 
@@ -2873,14 +3074,13 @@ func TestLaunchIntegration_ConfigureOnlyDoesNotRequireInstalledBinary(t *testing
 	}
 }
 
-func TestLaunchIntegration_CodexSavesPrimaryModel(t *testing.T) {
+func TestLaunchIntegration_ClaudeSavesPrimaryModel(t *testing.T) {
 	tmpDir := t.TempDir()
 	setLaunchTestHome(t, tmpDir)
 
 	binDir := t.TempDir()
-	writeFakeBinary(t, binDir, "codex")
+	writeFakeBinary(t, binDir, "claude")
 	t.Setenv("PATH", binDir)
-	withIntegrationOverride(t, "codex", &launcherSingleRunner{})
 
 	var aliasSyncCalled bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2898,7 +3098,7 @@ func TestLaunchIntegration_CodexSavesPrimaryModel(t *testing.T) {
 			fmt.Fprint(w, `{"name":"test-user"}`)
 		case "/api/experimental/aliases":
 			aliasSyncCalled = true
-			t.Fatalf("did not expect alias sync call for codex launch flow")
+			t.Fatalf("did not expect alias sync call after removing Claude alias flow")
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -2907,13 +3107,13 @@ func TestLaunchIntegration_CodexSavesPrimaryModel(t *testing.T) {
 	t.Setenv("OLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
-		Name:          "codex",
+		Name:          "claude",
 		ModelOverride: "glm-5:cloud",
 	}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
 	}
 
-	saved, err := config.LoadIntegration("codex")
+	saved, err := config.LoadIntegration("claude")
 	if err != nil {
 		t.Fatalf("failed to reload saved config: %v", err)
 	}
@@ -2921,21 +3121,20 @@ func TestLaunchIntegration_CodexSavesPrimaryModel(t *testing.T) {
 		t.Fatalf("unexpected saved models (-want +got):\n%s", diff)
 	}
 	if aliasSyncCalled {
-		t.Fatal("expected Codex launch flow not to sync aliases")
+		t.Fatal("expected Claude launch flow not to sync aliases")
 	}
 }
 
-func TestLaunchIntegration_CodexForceConfigureReprompts(t *testing.T) {
+func TestLaunchIntegration_ClaudeForceConfigureReprompts(t *testing.T) {
 	tmpDir := t.TempDir()
 	setLaunchTestHome(t, tmpDir)
 	withLauncherHooks(t)
 
 	binDir := t.TempDir()
-	writeFakeBinary(t, binDir, "codex")
+	writeFakeBinary(t, binDir, "claude")
 	t.Setenv("PATH", binDir)
-	withIntegrationOverride(t, "codex", &launcherSingleRunner{})
 
-	if err := config.SaveIntegration("codex", []string{"qwen3:8b"}); err != nil {
+	if err := config.SaveIntegration("claude", []string{"qwen3:8b"}); err != nil {
 		t.Fatalf("failed to seed config: %v", err)
 	}
 
@@ -2963,7 +3162,7 @@ func TestLaunchIntegration_CodexForceConfigureReprompts(t *testing.T) {
 	t.Setenv("OLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
-		Name:           "codex",
+		Name:           "claude",
 		ForceConfigure: true,
 	}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -2971,7 +3170,7 @@ func TestLaunchIntegration_CodexForceConfigureReprompts(t *testing.T) {
 	if selectorCalls != 1 {
 		t.Fatalf("expected forced configure to reprompt for model selection, got %d calls", selectorCalls)
 	}
-	saved, err := config.LoadIntegration("codex")
+	saved, err := config.LoadIntegration("claude")
 	if err != nil {
 		t.Fatalf("failed to reload saved config: %v", err)
 	}
@@ -2980,17 +3179,16 @@ func TestLaunchIntegration_CodexForceConfigureReprompts(t *testing.T) {
 	}
 }
 
-func TestLaunchIntegration_CodexForceConfigureMissingSelectionDoesNotSave(t *testing.T) {
+func TestLaunchIntegration_ClaudeForceConfigureMissingSelectionDoesNotSave(t *testing.T) {
 	tmpDir := t.TempDir()
 	setLaunchTestHome(t, tmpDir)
 	withLauncherHooks(t)
 
 	binDir := t.TempDir()
-	writeFakeBinary(t, binDir, "codex")
+	writeFakeBinary(t, binDir, "claude")
 	t.Setenv("PATH", binDir)
-	withIntegrationOverride(t, "codex", &launcherSingleRunner{})
 
-	if err := config.SaveIntegration("codex", []string{"llama3.2"}); err != nil {
+	if err := config.SaveIntegration("claude", []string{"llama3.2"}); err != nil {
 		t.Fatalf("failed to seed config: %v", err)
 	}
 
@@ -3028,14 +3226,14 @@ func TestLaunchIntegration_CodexForceConfigureMissingSelectionDoesNotSave(t *tes
 	t.Setenv("OLLAMA_HOST", srv.URL)
 
 	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
-		Name:           "codex",
+		Name:           "claude",
 		ForceConfigure: true,
 	})
 	if err == nil {
 		t.Fatal("expected missing selected model to abort launch")
 	}
 
-	saved, loadErr := config.LoadIntegration("codex")
+	saved, loadErr := config.LoadIntegration("claude")
 	if loadErr != nil {
 		t.Fatalf("failed to reload saved config: %v", loadErr)
 	}
@@ -3044,16 +3242,15 @@ func TestLaunchIntegration_CodexForceConfigureMissingSelectionDoesNotSave(t *tes
 	}
 }
 
-func TestLaunchIntegration_CodexModelOverrideSkipsSelector(t *testing.T) {
+func TestLaunchIntegration_ClaudeModelOverrideSkipsSelector(t *testing.T) {
 	tmpDir := t.TempDir()
 	setLaunchTestHome(t, tmpDir)
 	withLauncherHooks(t)
 	withInteractiveSession(t, true)
 
 	binDir := t.TempDir()
-	writeFakeBinary(t, binDir, "codex")
+	writeFakeBinary(t, binDir, "claude")
 	t.Setenv("PATH", binDir)
-	withIntegrationOverride(t, "codex", &launcherSingleRunner{})
 
 	var selectorCalls int
 	DefaultSingleSelector = func(title string, items []SelectionItem, current string) (string, error) {
@@ -3088,7 +3285,7 @@ func TestLaunchIntegration_CodexModelOverrideSkipsSelector(t *testing.T) {
 	t.Setenv("OLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
-		Name:          "codex",
+		Name:          "claude",
 		ModelOverride: "glm-4",
 	}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -3104,7 +3301,7 @@ func TestLaunchIntegration_CodexModelOverrideSkipsSelector(t *testing.T) {
 		t.Fatal("expected missing override model to be pulled after confirmation")
 	}
 
-	saved, err := config.LoadIntegration("codex")
+	saved, err := config.LoadIntegration("claude")
 	if err != nil {
 		t.Fatalf("failed to reload saved config: %v", err)
 	}

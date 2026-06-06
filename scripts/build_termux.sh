@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cross-compile ollama-termux for Android ARM64 on a Linux host.
-# Produces a tarball with Go binary + optimized ggml .so backends.
+# Produces a tarball with the Go binary + the llama-server runtime\n# (llama-server + ggml CPU variant libraries) under lib/ollama.
 #
 # Prerequisites:
 #   - Android NDK r27c+ (set NDK_ROOT)
@@ -113,20 +113,25 @@ reuse_prebuilt_termux_libs() {
     echo ""
 }
 
-# --- Step 1: Build or reuse ggml .so backends ---
+# --- Step 1: Build or reuse the llama-server runtime (lib/ollama) ---
+#
+# Upstream removed the in-repo CGO/ggml engines (#16031): all GGML models run
+# via the llama-server subprocess built from the pinned llama.cpp source
+# (LLAMA_CPP_VERSION) through llama/server/CMakeLists.txt. FetchContent needs
+# network access on first configure.
+#
+# GGML_BACKEND_DL=ON + GGML_CPU_ALL_VARIANTS=ON produce the runtime-dispatched
+# CPU variant libraries (libggml-cpu-*.so) next to llama-server, mirroring the
+# upstream `cpu` preset. Set TERMUX_CPU_VARIANTS=OFF to fall back to a single
+# armv8.2 tuned build if the variant matrix fails for the Android toolchain.
+#
+# BUILD_VULKAN=1 enables the llama.cpp Vulkan backend (needs glslc on the
+# host). At runtime the Go side (llm/termux.go) exposes /system/lib64 so
+# dlopen can reach the Android system Vulkan loader and the vendor GPU ICD.
 
-GGML_VARIANTS=(
-    "armv8.0:armv8-a"
-    "armv8.2:armv8.2-a+dotprod+fp16"
-    "armv8.6:armv8.6-a+dotprod+fp16+i8mm+sve2"
-)
-
-# BUILD_VULKAN=1 adds the Vulkan backend alongside the CPU variants.
-# Requires glslc in PATH (vulkan-sdk or shaderc on the build host).
-# Linked against the NDK Vulkan stub; at runtime the Termux build sets
-# LD_LIBRARY_PATH to /system/lib64 so ggml-vulkan resolves the Android
-# system loader and reaches the vendor GPU ICD.
 BUILD_VULKAN="${BUILD_VULKAN:-0}"
+TERMUX_CPU_VARIANTS="${TERMUX_CPU_VARIANTS:-ON}"
+
 if [ -n "$TERMUX_REUSE_RELEASE_TAG" ]; then
     reuse_prebuilt_termux_libs "$TERMUX_REUSE_RELEASE_TAG" "$TERMUX_REUSE_RELEASE_REPO"
 else
@@ -136,68 +141,18 @@ else
         exit 1
     fi
 
-    for variant in "${GGML_VARIANTS[@]}"; do
-        IFS=':' read -r name march <<< "$variant"
-        variant_dir="$BUILD_DIR/ggml-$name"
-        echo "--- Building ggml variant: $name ($march) ---"
-
-        cmake -S "$ROOT_DIR" -B "$variant_dir" \
-            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-28 \
-            -DANDROID_ARM_NEON=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS="-march=$march -O3" \
-            -DCMAKE_CXX_FLAGS="-march=$march -O3" \
-            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
-            -DGGML_VULKAN=OFF \
-            -DGGML_CUDA=OFF \
-            -DGGML_HIP=OFF \
-            -DMLX_ENGINE=OFF \
-            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=TRUE \
-            -GNinja
-
-        ninja -C "$variant_dir" ggml-cpu
-
-        lib_dir="$variant_dir/lib/ollama"
-        if [ -d "$lib_dir" ]; then
-            mkdir -p "$DIST_DIR/lib/ollama"
-            if [ -f "$lib_dir/libggml-base.so" ] && [ ! -f "$DIST_DIR/lib/ollama/libggml-base.so" ]; then
-                cp "$lib_dir/libggml-base.so" "$DIST_DIR/lib/ollama/"
-                echo "  Copied: libggml-base.so"
-            fi
-            # Rename each .so with the variant name so the 3 builds don't overwrite each other.
-            # Output: libggml-cpu-android_armv8_0_1.so / *_armv8_2_1.so / *_armv8_6_1.so
-            suffix="android_${name//./_}_1"
-            for so in "$lib_dir"/libggml-cpu*.so; do
-                if [ -f "$so" ]; then
-                    base="$(basename "$so" .so)"
-                    dest="$DIST_DIR/lib/ollama/${base}-${suffix}.so"
-                    cp "$so" "$dest"
-                    echo "  Copied: $(basename "$dest")"
-                fi
-            done
-        else
-            echo "  WARNING: lib/ollama not found in $variant_dir"
-        fi
-        echo ""
-    done
-
-    # --- Step 1b: Optional Vulkan backend ---
-
+    # Vulkan cross-build hints: find_package(Vulkan) cannot resolve under the
+    # NDK toolchain on its own. The NDK sysroot ships vulkan/*.h and
+    # libvulkan.so but not the C++ wrapper (vulkan.hpp), which ggml-vulkan
+    # needs, so build an include overlay: NDK C headers + host-only .hpp.
+    # Never add /usr/include itself to the Android include path; that leaks
+    # glibc headers into the NDK sysroot.
     if [ "$BUILD_VULKAN" = "1" ]; then
-        vulkan_dir="$BUILD_DIR/ggml-vulkan"
-        echo "--- Building ggml-vulkan (Android loader, runtime LD_LIBRARY_PATH=/system/lib64) ---"
-
-        # The NDK sysroot ships vulkan/vulkan.h (C) but not vulkan.hpp (C++).
-        # ggml-vulkan.cpp needs the C++ wrapper, so create an include overlay:
-        # Android C headers from the NDK sysroot plus host-only C++ .hpp wrappers.
-        # Never add /usr/include directly to Android CXX flags; that leaks glibc
-        # headers into the NDK sysroot and breaks cross-compilation.
         VULKAN_HOST_INCLUDE="${VULKAN_HOST_INCLUDE:-/usr/include}"
         VULKAN_NDK_INCLUDE="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include"
         VULKAN_NDK_LIBRARY="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/28/libvulkan.so"
         VULKAN_INCLUDE_OVERLAY="$BUILD_DIR/vulkan-include-overlay"
+
         if [ ! -f "$VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp" ]; then
             echo "ERROR: vulkan.hpp not found at $VULKAN_HOST_INCLUDE/vulkan/vulkan.hpp"
             echo "       install libvulkan-dev or LunarG SDK on the build host"
@@ -216,39 +171,111 @@ else
         fi
         cp "$VULKAN_HOST_INCLUDE"/vulkan/*.hpp "$VULKAN_INCLUDE_OVERLAY/vulkan/"
 
-        cmake -S "$ROOT_DIR" -B "$vulkan_dir" \
+        # ggml-vulkan.cpp includes <spirv/unified1/spirv.hpp>. The host
+        # /usr/include is an implicit dir CMake filters out under the NDK
+        # toolchain, so stage the SPIRV headers inside the overlay too.
+        SPIRV_HOST_INCLUDE="${SPIRV_HOST_INCLUDE:-/usr/include/spirv}"
+        if [ ! -f "$SPIRV_HOST_INCLUDE/unified1/spirv.hpp" ]; then
+            echo "ERROR: spirv/unified1/spirv.hpp not found at $SPIRV_HOST_INCLUDE"
+            echo "       install spirv-headers (apt) or set SPIRV_HOST_INCLUDE"
+            exit 1
+        fi
+        cp -R "$SPIRV_HOST_INCLUDE" "$VULKAN_INCLUDE_OVERLAY/"
+
+        # ggml-vulkan also needs the host SPIRV-Headers cmake package; the
+        # Android toolchain re-roots find_package, so locate the config on
+        # the host and pass SPIRV-Headers_DIR explicitly.
+        SPIRV_HEADERS_DIR="${SPIRV_HEADERS_DIR:-}"
+        if [ -z "$SPIRV_HEADERS_DIR" ]; then
+            for d in /usr/lib/cmake/SPIRV-Headers /usr/share/cmake/SPIRV-Headers /usr/lib/x86_64-linux-gnu/cmake/SPIRV-Headers; do
+                if [ -f "$d/SPIRV-HeadersConfig.cmake" ]; then
+                    SPIRV_HEADERS_DIR="$d"
+                    break
+                fi
+            done
+        fi
+        if [ -z "$SPIRV_HEADERS_DIR" ]; then
+            echo "ERROR: SPIRV-Headers cmake package not found on the host"
+            echo "       install spirv-headers (apt) or set SPIRV_HEADERS_DIR"
+            exit 1
+        fi
+    fi
+
+    server_dir="$BUILD_DIR/llama-server"
+    echo "--- Building llama-server (llama.cpp $(cat "$ROOT_DIR/LLAMA_CPP_VERSION")) ---"
+
+    cmake_args=(
+        -S "$ROOT_DIR/llama/server" -B "$server_dir"
+        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN"
+        -DANDROID_ABI=arm64-v8a
+        -DANDROID_PLATFORM=android-28
+        -DANDROID_ARM_NEON=ON
+        -DCMAKE_BUILD_TYPE=Release
+        -DBUILD_SHARED_LIBS=ON
+        -DGGML_BACKEND_DL=ON
+        -DGGML_NATIVE=OFF
+        -DGGML_OPENMP=OFF
+        -DGGML_CPU_ALL_VARIANTS="$TERMUX_CPU_VARIANTS"
+        -DOLLAMA_RUNNER_DIR=""
+        -DCMAKE_INSTALL_PREFIX="$DIST_DIR"
+        -GNinja
+    )
+    if [ "$TERMUX_CPU_VARIANTS" != "ON" ]; then
+        cmake_args+=(
+            -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3"
+            -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3"
+        )
+    fi
+    cmake "${cmake_args[@]}"
+    cmake --build "$server_dir" -- -l "$(nproc)"
+    cmake --install "$server_dir" --component llama-server --strip
+
+    if [ ! -x "$DIST_DIR/lib/ollama/llama-server" ]; then
+        echo "ERROR: llama-server missing from $DIST_DIR/lib/ollama after install"
+        exit 1
+    fi
+    echo "  Installed runtime:"
+    ls -1 "$DIST_DIR/lib/ollama" | sed 's/^/    /'
+    echo ""
+
+    # --- Step 1b: Optional Vulkan backend (separate pass, upstream model) ---
+    #
+    # Mirrors the upstream `vulkan` preset: a dedicated configure with
+    # OLLAMA_RUNNER_DIR=vulkan + OLLAMA_GPU_BACKEND=vulkan installs ONLY the
+    # libggml-vulkan backend into lib/ollama/vulkan/, which the runner
+    # discovers at runtime (GGML_BACKEND_DL).
+    if [ "$BUILD_VULKAN" = "1" ]; then
+        vulkan_dir="$BUILD_DIR/llama-server-vulkan"
+        echo "--- Building Vulkan backend (llama.cpp $(cat "$ROOT_DIR/LLAMA_CPP_VERSION")) ---"
+
+        cmake -S "$ROOT_DIR/llama/server" -B "$vulkan_dir" \
             -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-28 \
             -DANDROID_ARM_NEON=ON \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3" \
-            -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod+fp16 -O3 -isystem $VULKAN_INCLUDE_OVERLAY" \
-            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DBUILD_SHARED_LIBS=ON \
+            -DGGML_BACKEND_DL=ON \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=OFF \
             -DGGML_VULKAN=ON \
-            -DGGML_VULKAN_CHECK_RESULTS=OFF \
-            -DGGML_VULKAN_DEBUG=OFF \
-            -DGGML_CUDA=OFF \
-            -DGGML_HIP=OFF \
-            -DMLX_ENGINE=OFF \
+            -DOLLAMA_RUNNER_DIR=vulkan \
+            -DOLLAMA_GPU_BACKEND=vulkan \
             -DVulkan_INCLUDE_DIR="$VULKAN_INCLUDE_OVERLAY" \
             -DVulkan_LIBRARY="$VULKAN_NDK_LIBRARY" \
+            -DVulkan_GLSLC_EXECUTABLE="$(command -v glslc)" \
+            -DSPIRV-Headers_DIR="$SPIRV_HEADERS_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$DIST_DIR" \
             -GNinja
+        cmake --build "$vulkan_dir" -- -l "$(nproc)"
+        cmake --install "$vulkan_dir" --component llama-server --strip
 
-        ninja -C "$vulkan_dir" ggml-vulkan
-
-        lib_dir="$vulkan_dir/lib/ollama"
-        if [ -d "$lib_dir" ]; then
-            mkdir -p "$DIST_DIR/lib/ollama/vulkan"
-            for so in "$lib_dir"/libggml-vulkan*.so "$lib_dir"/libggml-base*.so; do
-                if [ -f "$so" ]; then
-                    cp "$so" "$DIST_DIR/lib/ollama/vulkan/"
-                    echo "  Copied: $(basename "$so")"
-                fi
-            done
-        else
-            echo "  WARNING: lib/ollama not found in $vulkan_dir"
+        if ! ls "$DIST_DIR/lib/ollama/vulkan/"libggml-vulkan*.so >/dev/null 2>&1; then
+            echo "ERROR: libggml-vulkan missing from $DIST_DIR/lib/ollama/vulkan after install"
+            exit 1
         fi
+        echo "  Installed Vulkan backend:"
+        ls -1 "$DIST_DIR/lib/ollama/vulkan" | sed 's/^/    /'
         echo ""
     fi
 fi
@@ -298,13 +325,10 @@ mkdir -p "$STAGING/bin" "$STAGING/lib/ollama"
 
 cp "$DIST_DIR/bin/ollama" "$STAGING/bin/"
 if [ -d "$DIST_DIR/lib/ollama" ]; then
-    cp "$DIST_DIR/lib/ollama/"*.so "$STAGING/lib/ollama/" 2>/dev/null || true
-    # Vulkan backend lives in a subdirectory so the runner discovery glob
-    # (LibOllamaPath/*/*ggml-*) can find it and apply the OLLAMA_VULKAN gate.
-    if [ -d "$DIST_DIR/lib/ollama/vulkan" ]; then
-        mkdir -p "$STAGING/lib/ollama/vulkan"
-        cp "$DIST_DIR/lib/ollama/vulkan/"*.so "$STAGING/lib/ollama/vulkan/" 2>/dev/null || true
-    fi
+    # Whole runtime tree: llama-server + libllama/libggml-base + CPU variant
+    # libraries (+ optional GPU backend subdirectories).
+    cp -R "$DIST_DIR/lib/ollama/." "$STAGING/lib/ollama/"
+    chmod +x "$STAGING/lib/ollama/llama-server" 2>/dev/null || true
 fi
 
 # Add install helper

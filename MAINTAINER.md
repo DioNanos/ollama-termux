@@ -19,8 +19,8 @@ In scope:
 - Vulkan loader path for `/system/lib64` (Android GPU access)
 - the `@mmmbuto/ollama-termux` npm installer wrapper that downloads matching
   GitHub Release assets and installs them under the Termux prefix
-- launcher integrations on Termux: **Codex VL** (primary), Codex, Qwen Code,
-  Claude Code (frozen), Hermes Agent
+- launcher integrations on Termux: Codex (Termux fork), **Codex VL**,
+  Qwen Code (Termux fork), Pi
 - the release line: `v<upstream>-termux.N`, prebuilt Android ARM64 assets via
   GitHub Releases
 
@@ -41,7 +41,7 @@ Out of scope here:
 
 When reporting a Termux bug, please include: device, Android version, Termux
 build, total RAM, `ollama --version`, and the failing CLI integration if any
-(Codex VL, Codex, Qwen Code, Claude Code, Hermes).
+(Codex, Codex VL, Qwen Code, Pi).
 
 ## Identity
 

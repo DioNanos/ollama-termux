@@ -3,7 +3,8 @@
  * ollama-termux installer for Termux/Android
  *
  * Downloads a pre-built release tarball from GitHub and installs
- * the binary + ggml .so backends to the Termux prefix.
+ * the binary + the llama-server runtime (llama-server + ggml CPU
+ * variant libraries) to the Termux prefix.
  * No Go toolchain required on-device.
  */
 
@@ -100,7 +101,7 @@ function removeInstalledBackends() {
   for (const entry of fs.readdirSync(OLLAMA_LIB, { withFileTypes: true })) {
     if (entry.name === 'ollama' || entry.name === 'ollama.orig') continue;
     const target = path.join(OLLAMA_LIB, entry.name);
-    if (entry.isDirectory() || entry.name.endsWith('.so')) {
+    if (entry.isDirectory() || entry.name.endsWith('.so') || entry.name === 'llama-server') {
       fs.rmSync(target, { recursive: true, force: true });
     }
   }
@@ -120,6 +121,9 @@ function copyTree(srcDir, dstDir, relDir = '') {
 
     backupIfExists(dst);
     fs.copyFileSync(src, dst);
+    // Preserve the source mode: lib/ollama now ships the llama-server
+    // executable alongside the .so libraries.
+    fs.chmodSync(dst, fs.statSync(src).mode & 0o777);
     log('Installed: ' + path.join('lib/ollama', rel));
   }
 }
@@ -221,10 +225,10 @@ async function main() {
   log('  ollama serve &');
   log('  ollama pull qwen3.5:4b');
   log('  ollama pull gemma4:e4b');
-  log('  ollama launch codex-vl --model gemma4:e4b');
   log('  ollama launch codex --model qwen3.5:4b');
-  log('  ollama launch qwen --model gemma4:e2b');
-  log('  ollama launch hermes');
+  log('  ollama launch codex-vl --model gemma4:e4b');
+  log('  ollama launch qwen --model qwen3.5:4b');
+  log('  ollama launch pi');
 }
 
 main().catch((e) => {

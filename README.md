@@ -24,22 +24,24 @@ behavior.
 
 ### What This Fork Changes
 
-- Keeps only the launcher integrations we support on Termux:
-  **Codex VL** (primary), **Codex**, **Qwen Code**, **Hermes Agent**
+- Exposes only the launcher integrations verified on Termux:
+  **Codex**, **Codex VL**, **Qwen Code**, **Pi**
+- Auto-installs missing integrations from npm straight from the launcher menu
 - Uses `termux-open-url` for browser/OAuth flows
-- Tunes CPU thread selection, memory heuristics, flash attention defaults, and
-  context limits for modern phones
+- Tunes CPU thread selection, memory heuristics, and context limits for
+  modern phones
 - Ships prebuilt Android ARM64 release assets through GitHub Releases and
   installs them through the npm package
 
 ### Termux-Specific Runtime
 
+- Inference runs through the upstream `llama-server` subprocess (Ollama
+  0.30.x architecture), cross-built for Android ARM64
 - RAM detection: 60-75% of MemTotal (Android-aware heuristic)
 - Thread limit: big cores only (cpufreq-based detection)
-- Flash attention: auto-enabled on CPU-only for memory savings
 - Context window: auto-limited based on available RAM tiers
-- Vulkan: `/system/lib64` loader path for Android GPU access
-- `LD_LIBRARY_PATH` fix for runner subprocess on Termux
+- Library paths: `$PREFIX/lib` + `/system/lib64` (Android Vulkan loader)
+  wired into the `llama-server` subprocess
 
 ---
 
@@ -50,11 +52,16 @@ pkg update && pkg upgrade -y
 pkg install nodejs-lts -y
 
 npm install -g @mmmbuto/ollama-termux@latest
+ollama-termux   # run the installer once
 ```
 
-The npm package is an installer wrapper. During `postinstall`, it downloads the
+The npm package is an installer wrapper: `ollama-termux` downloads the
 matching GitHub Release asset, verifies SHA256, and installs `bin/ollama` +
-`lib/ollama` backends under the Termux prefix.
+the `lib/ollama` runtime (llama-server + backend libraries) under the Termux
+prefix. Recent npm versions block `postinstall` scripts by default
+(allow-scripts), so running `ollama-termux` after the install is the
+reliable path; on older npm the postinstall hook does the same thing
+automatically.
 
 ---
 
@@ -62,25 +69,26 @@ matching GitHub Release asset, verifies SHA256, and installs `bin/ollama` +
 
 | Order | CLI | Package | Status |
 |-------|-----|---------|--------|
-| 1 | **Codex VL** | `@mmmbuto/codex-vl` | Primary — Vivling-enhanced fork |
-| 2 | **Codex** | `@mmmbuto/codex-cli-termux` | Secondary |
-| 3 | **Qwen Code** | `@mmmbuto/qwen-code-termux` | OpenAI-compat via local Ollama |
-| 4 | **Hermes Agent** | curl install script | Official Termux support |
+| 1 | **Codex** | `@mmmbuto/codex-cli-termux` | Termux fork |
+| 2 | **Codex VL** | `@mmmbuto/codex-vl` | Vivling-enhanced fork |
+| 3 | **Qwen Code** | `@mmmbuto/qwen-code-termux` | Termux fork |
+| 4 | **Pi** | `@earendil-works/pi-coding-agent` | Upstream npm, Termux-compatible |
 
-Install the CLIs you need:
+The launcher offers to install a missing integration when you select it
+(npm-based, with confirmation). Manual install also works:
 
 ```bash
-# Codex VL — primary (our Vivling fork)
-npm install -g @mmmbuto/codex-vl
-
-# Codex — secondary (our Termux fork)
+# Codex — our Termux fork
 npm install -g @mmmbuto/codex-cli-termux
 
-# Qwen Code
+# Codex VL — our Vivling fork
+npm install -g @mmmbuto/codex-vl
+
+# Qwen Code — our Termux fork
 npm install -g @mmmbuto/qwen-code-termux
 
-# Hermes Agent
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+# Pi
+npm install -g @earendil-works/pi-coding-agent
 ```
 
 ---
@@ -95,12 +103,14 @@ ollama serve &
 ollama pull qwen3.5:4b
 ollama pull gemma4:e4b
 
-# Launch integrations
-ollama launch codex-vl --model gemma4:e4b
-ollama launch codex --model qwen3.5:4b
-ollama launch qwen --model gemma4:e2b
-ollama launch hermes
+# Interactive menu: pick chat or one of the CLIs
+ollama
 
+# Or launch an integration directly
+ollama launch codex --model qwen3.5:4b
+ollama launch codex-vl --model gemma4:e4b
+ollama launch qwen --model qwen3.5:4b
+ollama launch pi
 ```
 
 ---
@@ -126,8 +136,9 @@ Tuned for modern ARM64 phones:
 - Galaxy S24+ / Snapdragon 8 Gen 3
 - Galaxy S25 Ultra / Snapdragon 8 Elite
 
-CPU backends: `armv8.0`, `armv8.2+dotprod+fp16`, `armv8.6+dotprod+fp16+i8mm+sve2`.
-Optional Vulkan GPU backend (`BUILD_VULKAN=1`, runtime `OLLAMA_VULKAN=1`).
+CPU backends: runtime-dispatched llama.cpp variant libraries
+(`GGML_CPU_ALL_VARIANTS`), selected per device at startup.
+Optional Vulkan GPU backend (`BUILD_VULKAN=1`).
 
 ---
 

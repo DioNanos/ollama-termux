@@ -10,12 +10,15 @@ import (
 var (
 	integrations       map[string]Runner
 	integrationAliases map[string]bool
-	integrationOrder   = launcherIntegrationOrder
+	integrationOrder   []string
 )
 
 func init() {
 	integrations = buildTestIntegrations()
 	integrationAliases = buildTestIntegrationAliases()
+	// Read the order inside init so the fork's codex-vl registration in
+	// termux.go (whose init runs first by file order) is included.
+	integrationOrder = launcherIntegrationOrder
 }
 
 func buildTestIntegrations() map[string]Runner {
@@ -36,26 +39,13 @@ func buildTestIntegrationAliases() map[string]bool {
 	return result
 }
 
-func withTermuxRuntimeForTest(t *testing.T, enabled bool) {
-	t.Helper()
-
-	prevRuntime := isTermuxRuntime
-	prevOrder := integrationOrder
-	isTermuxRuntime = func() bool { return enabled }
-	if enabled {
-		integrationOrder = termuxLauncherIntegrationOrder
-	} else {
-		integrationOrder = launcherIntegrationOrder
-	}
-	t.Cleanup(func() {
-		isTermuxRuntime = prevRuntime
-		integrationOrder = prevOrder
-	})
-}
-
 func setTestHome(t *testing.T, dir string) {
 	t.Helper()
 	setLaunchTestHome(t, dir)
+}
+
+func testLaunchModels(names ...string) []LaunchModel {
+	return launchModelsFromNames(names)
 }
 
 func SaveIntegration(appName string, models []string) error {

@@ -45,9 +45,12 @@ On the Linux build host:
 - Android NDK `r27c`
 - Go `>= 1.24`
 - Node.js (used to read package version)
-- CMake `>= 3.22`
+- CMake `>= 3.24`
 - Ninja
 - `file`, `curl`, `unzip`
+- For `BUILD_VULKAN=1`: `glslc`, `libvulkan-dev` (vulkan.hpp), `spirv-headers`
+- Network access on first configure (llama.cpp is fetched at the pinned
+  `LLAMA_CPP_VERSION` via CMake FetchContent)
 
 Example NDK setup:
 
@@ -61,15 +64,19 @@ export NDK_ROOT=~/android-ndk/android-ndk-r27c
 
 ## Build Artifacts
 
-The tarball contains:
+Since the 0.30.x line, inference runs through the upstream `llama-server`
+subprocess; the tarball ships the whole runtime:
 
 - `bin/ollama`
-- `lib/ollama/libggml-base.so`
-- `lib/ollama/libggml-cpu-android_armv8_0_1.so`
-- `lib/ollama/libggml-cpu-android_armv8_2_1.so`
-- `lib/ollama/libggml-cpu-android_armv8_6_1.so`
+- `lib/ollama/llama-server` (plus `llama-quantize`)
+- `lib/ollama/libllama*.so`, `lib/ollama/libggml-base.so`, `lib/ollama/libmtmd.so`
+- `lib/ollama/libggml-cpu-android_armv*.so` — runtime-dispatched CPU variants
+  (armv8.0 through armv9.2, selected per device at startup)
+- `lib/ollama/vulkan/libggml-vulkan.so` when built with `BUILD_VULKAN=1`
 
 The installer downloads that tarball and extracts it into the Termux prefix.
+Set `TERMUX_CPU_VARIANTS=OFF` to build a single armv8.2-tuned CPU backend
+instead of the full variant matrix.
 
 ## Release Workflow
 
@@ -97,5 +104,7 @@ chmod +x bin/ollama
 
 - Thread selection uses big-core detection via `cpufreq` when available
 - Free memory is derived from an Android-specific `MemTotal` heuristic
-- Flash attention is enabled automatically for the tuned mobile path
-- The highest CPU backend is chosen at runtime by ggml feature detection
+- Flash attention follows llama-server `--flash-attn auto`
+- The best CPU backend variant is chosen at runtime by ggml feature detection
+- `$PREFIX/lib` and `/system/lib64` (Android Vulkan loader) are wired into the
+  `llama-server` subprocess library path

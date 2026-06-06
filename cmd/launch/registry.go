@@ -3,11 +3,9 @@ package launch
 import (
 	"fmt"
 	"os"
-	"runtime"
+	"os/exec"
 	"slices"
 	"strings"
-
-	"github.com/ollama/ollama/envconfig"
 )
 
 // IntegrationInstallSpec describes how launcher should detect and guide installation.
@@ -35,65 +33,183 @@ type IntegrationInfo struct {
 	Description string
 }
 
-var launcherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "hermes"}
-
-var termuxLauncherIntegrationOrder = []string{"codex-vl", "codex", "qwen", "hermes"}
-
-var termuxSupportedIntegrationNames = map[string]bool{
-	"codex":    true,
-	"codex-vl": true,
-	"hermes":   true,
-	"qwen":     true,
-}
-
-var isTermuxRuntime = func() bool {
-	return envconfig.IsTermux() || runtime.GOOS == "android"
-}
+var launcherIntegrationOrder = []string{"claude", "codex-app", "hermes", "openclaw", "opencode", "hermes-desktop", "codex", "copilot", "cline", "droid", "pi", "pool", "qwen"}
 
 var integrationSpecs = []*IntegrationSpec{
 	{
-		Name:        "codex-vl",
-		Runner:      &CodexVL{},
-		Description: "Codex VL — Vivling-enhanced Codex fork (primary on Termux)",
+		Name:        "claude",
+		Runner:      &Claude{},
+		Description: "Anthropic's coding tool with subagents",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
-				_, err := (&CodexVL{}).findCommand()
+				_, err := (&Claude{}).findPath()
 				return err == nil
 			},
-			URL:     "https://www.npmjs.com/package/@mmmbuto/codex-vl",
-			Command: []string{"npm", "install", "-g", "@mmmbuto/codex-vl"},
+			URL: "https://code.claude.com/docs/en/quickstart",
+		},
+	},
+	{
+		Name:        "claude-desktop",
+		Runner:      &ClaudeDesktop{},
+		Aliases:     []string{"claude-app"},
+		Description: "Claude Desktop with Ollama Cloud",
+		Hidden:      true,
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				return claudeDesktopInstalled()
+			},
+			URL: "https://claude.com/download",
+		},
+	},
+	{
+		Name:        "cline",
+		Runner:      &Cline{},
+		Description: "Autonomous coding agent with parallel execution",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := exec.LookPath("cline")
+				return err == nil
+			},
+			EnsureInstalled: func() error {
+				_, err := ensureClineInstalled()
+				return err
+			},
+			Command: []string{"npm", "install", "-g", "cline@latest"},
 		},
 	},
 	{
 		Name:        "codex",
 		Runner:      &Codex{},
-		Description: "OpenAI's open-source coding agent (secondary on Termux)",
+		Description: "OpenAI's open-source coding agent",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
-				_, err := (&Codex{}).findCommand()
+				_, err := exec.LookPath("codex")
 				return err == nil
 			},
-			URL:     "https://www.npmjs.com/package/@mmmbuto/codex-cli-termux",
-			Command: []string{"npm", "install", "-g", "@mmmbuto/codex-cli-termux"},
+			URL:     "https://developers.openai.com/codex/cli/",
+			Command: []string{"npm", "install", "-g", "@openai/codex"},
 		},
 	},
 	{
-		Name:        "qwen",
-		Runner:      &Qwen{},
-		Description: "Qwen Code — OpenAI-compat coding agent (secondary on Termux)",
+		Name:        "codex-app",
+		Runner:      &CodexApp{},
+		Aliases:     []string{"codex-desktop", "codex-gui"},
+		Description: "An AI agent you can delegate real work to, by OpenAI",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
-				_, err := (&Qwen{}).findCommand()
+				return codexAppInstalled()
+			},
+			URL: "https://developers.openai.com/codex/quickstart",
+		},
+	},
+	{
+		Name:        "kimi",
+		Runner:      &Kimi{},
+		Description: "Moonshot's coding agent for terminal and IDEs",
+		Hidden:      true,
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := exec.LookPath("kimi")
 				return err == nil
 			},
-			URL:     "https://www.npmjs.com/package/@mmmbuto/qwen-code-termux",
-			Command: []string{"npm", "install", "-g", "@mmmbuto/qwen-code-termux"},
+			EnsureInstalled: func() error {
+				_, err := ensureKimiInstalled()
+				return err
+			},
+			URL: "https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html",
+		},
+	},
+	{
+		Name:        "copilot",
+		Runner:      &Copilot{},
+		Aliases:     []string{"copilot-cli"},
+		Description: "GitHub's AI coding agent for the terminal",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := (&Copilot{}).findPath()
+				return err == nil
+			},
+			URL: "https://github.com/features/copilot/cli/",
+		},
+	},
+	{
+		Name:        "droid",
+		Runner:      &Droid{},
+		Description: "Factory's coding agent across terminal and IDEs",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := exec.LookPath("droid")
+				return err == nil
+			},
+			URL: "https://docs.factory.ai/cli/getting-started/quickstart",
+		},
+	},
+	{
+		Name:        "opencode",
+		Runner:      &OpenCode{},
+		Description: "Anomaly's open-source coding agent",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, ok := findOpenCode()
+				return ok
+			},
+			URL: "https://opencode.ai",
+		},
+	},
+	{
+		Name:        "openclaw",
+		Runner:      &Openclaw{},
+		Aliases:     []string{"clawdbot", "moltbot"},
+		Description: "Personal AI with 100+ skills",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				if _, err := exec.LookPath("openclaw"); err == nil {
+					return true
+				}
+				if _, err := exec.LookPath("clawdbot"); err == nil {
+					return true
+				}
+				return false
+			},
+			EnsureInstalled: func() error {
+				_, err := ensureOpenclawInstalled()
+				return err
+			},
+			URL: "https://docs.openclaw.ai",
+		},
+	},
+	{
+		Name:        "pi",
+		Runner:      &Pi{},
+		Description: "Minimal AI agent toolkit with plugin support",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := exec.LookPath("pi")
+				return err == nil
+			},
+			EnsureInstalled: func() error {
+				_, err := ensurePiInstalled()
+				return err
+			},
+			Command: []string{"npm", "install", "-g", "@earendil-works/pi-coding-agent@latest"},
+		},
+	},
+	{
+		Name:        "pool",
+		Runner:      &Poolside{},
+		Description: "Poolside's software agent for enterprise development",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := exec.LookPath("pool")
+				return err == nil
+			},
+			URL: "https://github.com/poolsideai/pool",
 		},
 	},
 	{
 		Name:        "hermes",
 		Runner:      &Hermes{},
-		Description: "Self-improving AI agent by Nous Research — Termux supported",
+		Description: "Self-improving AI agent built by Nous Research",
 		Install: IntegrationInstallSpec{
 			CheckInstalled: func() bool {
 				return (&Hermes{}).installed()
@@ -102,6 +218,49 @@ var integrationSpecs = []*IntegrationSpec{
 				return (&Hermes{}).ensureInstalled()
 			},
 			URL: "https://hermes-agent.nousresearch.com/docs/getting-started/installation/",
+		},
+	},
+	{
+		Name:        "hermes-desktop",
+		Runner:      &HermesDesktop{},
+		Description: "Desktop app for Hermes Agent by Nous Research",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				return (&Hermes{}).installed()
+			},
+			EnsureInstalled: func() error {
+				return (&Hermes{}).ensureInstalledFor("hermes-desktop")
+			},
+			URL: "https://hermes-agent.nousresearch.com/docs/getting-started/installation/",
+		},
+	},
+	{
+		Name:        "vscode",
+		Runner:      &VSCode{},
+		Aliases:     []string{"code"},
+		Description: "Microsoft's open-source AI code editor",
+		Hidden:      true,
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				return (&VSCode{}).findBinary() != ""
+			},
+			URL: "https://code.visualstudio.com",
+		},
+	},
+	{
+		Name:        "qwen",
+		Runner:      &Qwen{},
+		Description: "Qwen's AI coding agent with tool use",
+		Install: IntegrationInstallSpec{
+			CheckInstalled: func() bool {
+				_, err := (&Qwen{}).findPath()
+				return err == nil
+			},
+			EnsureInstalled: func() error {
+				_, err := ensureQwenInstalled()
+				return err
+			},
+			URL: "https://qwen.ai/qwencode",
 		},
 	},
 }
@@ -114,24 +273,6 @@ func init() {
 
 func hyperlink(url, text string) string {
 	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, text)
-}
-
-func launcherIntegrationOrderForRuntime() []string {
-	if isTermuxRuntime() {
-		return termuxLauncherIntegrationOrder
-	}
-	return launcherIntegrationOrder
-}
-
-func integrationSupportedForRuntime(name string) bool {
-	if !isTermuxRuntime() {
-		return true
-	}
-	return termuxSupportedIntegrationNames[strings.ToLower(name)]
-}
-
-func termuxUnsupportedIntegrationError(name string) error {
-	return fmt.Errorf("integration %q is not supported in ollama-termux", name)
 }
 
 func rebuildIntegrationSpecIndexes() {
@@ -168,13 +309,8 @@ func rebuildIntegrationSpecIndexes() {
 		}
 	}
 
-	validateLauncherOrder(launcherIntegrationOrder)
-	validateLauncherOrder(termuxLauncherIntegrationOrder)
-}
-
-func validateLauncherOrder(order []string) {
-	orderSeen := make(map[string]bool, len(order))
-	for _, name := range order {
+	orderSeen := make(map[string]bool, len(launcherIntegrationOrder))
+	for _, name := range launcherIntegrationOrder {
 		key := strings.ToLower(name)
 		if orderSeen[key] {
 			panic(fmt.Sprintf("launch: duplicate launcher order entry %q", key))
@@ -200,9 +336,6 @@ func LookupIntegrationSpec(name string) (*IntegrationSpec, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown integration: %s", name)
 	}
-	if !integrationSupportedForRuntime(spec.Name) {
-		return nil, termuxUnsupportedIntegrationError(spec.Name)
-	}
 	return spec, nil
 }
 
@@ -222,15 +355,17 @@ func ListVisibleIntegrationSpecs() []IntegrationSpec {
 		if spec.Hidden {
 			continue
 		}
-		if !integrationSupportedForRuntime(spec.Name) {
+		if supported, ok := spec.Runner.(SupportedIntegration); ok && supported.Supported() != nil {
+			continue
+		}
+		if spec.Name == "pool" && poolsideGOOS == "windows" {
 			continue
 		}
 		visible = append(visible, *spec)
 	}
 
-	order := launcherIntegrationOrderForRuntime()
-	orderRank := make(map[string]int, len(order))
-	for i, name := range order {
+	orderRank := make(map[string]int, len(launcherIntegrationOrder))
+	for i, name := range launcherIntegrationOrder {
 		orderRank[name] = i + 1
 	}
 
@@ -344,6 +479,10 @@ func EnsureIntegrationInstalled(name string, runner Runner) error {
 		if err := supported.Supported(); err != nil {
 			return err
 		}
+	}
+
+	if integration.spec.Name == "pool" && poolsideGOOS == "windows" {
+		return poolsideUnsupportedError()
 	}
 
 	if integration.installed {

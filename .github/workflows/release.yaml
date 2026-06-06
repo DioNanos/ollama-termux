@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ca-certificates curl file glslc libvulkan-dev ninja-build python3 unzip
+            ca-certificates curl file glslc libvulkan-dev ninja-build python3 spirv-headers unzip
 
       - name: Verify public release safety
         run: bash .github/scripts/verify-public-release-safety.sh
@@ -138,11 +138,13 @@ jobs:
           test -f "dist/ollama-termux-${VERSION}-android-arm64.tar.gz.sha256"
           tar -tzf "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" > "$RUNNER_TEMP/termux-asset-files.txt"
           grep -qx './bin/ollama' "$RUNNER_TEMP/termux-asset-files.txt"
-          grep -qx './lib/ollama/libggml-base.so' "$RUNNER_TEMP/termux-asset-files.txt"
-          grep -qx './lib/ollama/libggml-cpu-android_armv8_0_1.so' "$RUNNER_TEMP/termux-asset-files.txt"
+          # llama-server runtime (upstream removed the CGO engines in 0.30.x):
+          # the subprocess binary plus base + at least one CPU backend library.
+          grep -qx './lib/ollama/llama-server' "$RUNNER_TEMP/termux-asset-files.txt"
+          grep -qE '^\./lib/ollama/libggml-base\.so$' "$RUNNER_TEMP/termux-asset-files.txt"
+          grep -qE '^\./lib/ollama/libggml-cpu.*\.so$' "$RUNNER_TEMP/termux-asset-files.txt"
           if [ "${{ steps.meta.outputs.build_vulkan }}" = "1" ]; then
-            grep -qx './lib/ollama/vulkan/libggml-base.so' "$RUNNER_TEMP/termux-asset-files.txt"
-            grep -qx './lib/ollama/vulkan/libggml-vulkan.so' "$RUNNER_TEMP/termux-asset-files.txt"
+            grep -qE '^\./lib/ollama/.*libggml-vulkan.*\.so$' "$RUNNER_TEMP/termux-asset-files.txt"
           fi
 
       - name: Generate release notes

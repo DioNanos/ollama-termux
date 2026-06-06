@@ -58,26 +58,11 @@ func TestLaunchCmd(t *testing.T) {
 		if cmd.Long == "" {
 			t.Error("Long description should not be empty")
 		}
-		if !strings.Contains(cmd.Long, "codex") {
-			t.Error("Long description should mention codex")
+		if !strings.Contains(cmd.Long, "hermes") {
+			t.Error("Long description should mention hermes")
 		}
-		if !strings.Contains(cmd.Long, "qwen") {
-			t.Error("Long description should mention qwen")
-		}
-	})
-
-	t.Run("termux help only lists supported cli integrations", func(t *testing.T) {
-		withTermuxRuntimeForTest(t, true)
-		cmd := LaunchCmd(mockCheck, mockTUI)
-
-		if !strings.Contains(cmd.Long, "qwen") {
-			t.Error("termux help should mention qwen")
-		}
-		if strings.Contains(cmd.Long, "kimi") {
-			t.Error("termux help should not mention kimi")
-		}
-		if strings.Contains(cmd.Long, "openclaw") {
-			t.Error("termux help should not mention openclaw")
+		if !strings.Contains(cmd.Long, "kimi") {
+			t.Error("Long description should mention kimi")
 		}
 	})
 
@@ -134,7 +119,7 @@ func TestLaunchCmdTUICallback(t *testing.T) {
 		}
 
 		cmd := LaunchCmd(mockCheck, mockTUI)
-		cmd.SetArgs([]string{"codex"})
+		cmd.SetArgs([]string{"claude"})
 		_ = cmd.Execute()
 
 		if tuiCalled {
@@ -246,6 +231,31 @@ func TestLaunchCmdTUICallback(t *testing.T) {
 			t.Error("TUI callback should NOT be called when --restore is provided without an integration")
 		}
 	})
+}
+
+func TestLaunchCmdClaudeDesktopLaunchReturnsUnsupported(t *testing.T) {
+	for _, name := range []string{"claude-desktop", "claude-app"} {
+		t.Run(name, func(t *testing.T) {
+			cmd := LaunchCmd(func(cmd *cobra.Command, args []string) error {
+				t.Fatal("heartbeat check should not run before Claude Desktop unsupported error")
+				return nil
+			}, func(cmd *cobra.Command) {
+				t.Fatal("TUI callback should not run for direct integration launch")
+			})
+			cmd.SetArgs([]string{name})
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("expected Claude Desktop launch command to fail")
+			}
+			if !strings.Contains(err.Error(), "Claude Desktop is no longer supported") {
+				t.Fatalf("expected unsupported guidance, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "ollama launch claude-desktop --restore") {
+				t.Fatalf("expected restore guidance, got %v", err)
+			}
+		})
+	}
 }
 
 func TestLaunchCmdNilHeartbeat(t *testing.T) {

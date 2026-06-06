@@ -31,7 +31,7 @@ def main() -> int:
         f"Built from upstream {upstream_repo} {upstream_tag} and adapted for Termux-first Android ARM64 packaging.",
         "",
         "## Termux adaptation",
-        "- Launcher CLI support on Termux stays limited to Codex VL (primary), Codex, Qwen Code, and Hermes Agent.",
+        "- Launcher CLI support on Termux stays limited to Codex (Termux fork), Codex VL, Qwen Code (Termux fork), and Pi.",
         "- Unsupported upstream coding CLIs are disabled on Termux runtime.",
     ]
     if reuse_tag:

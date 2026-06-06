@@ -36,7 +36,7 @@ jobs:
           fi
           ${sudo_cmd} apt-get update
           ${sudo_cmd} apt-get install -y --no-install-recommends \
-            ca-certificates curl file glslc ninja-build python3 unzip vulkan-headers
+            ca-certificates curl file glslc libvulkan-dev ninja-build python3 spirv-headers unzip vulkan-headers
       - name: Verify public release safety
         run: bash .github/scripts/verify-public-release-safety.sh
       - name: Download Android NDK
@@ -64,9 +64,10 @@ jobs:
           test -f "$ASSET"
           test -f "$ASSET.sha256"
           tar -tzf "$ASSET" | grep -qx './bin/ollama'
-          tar -tzf "$ASSET" | grep -qx './lib/ollama/libggml-cpu-android_armv8_0_1.so'
-          tar -tzf "$ASSET" | grep -qx './lib/ollama/vulkan/libggml-base.so'
-          tar -tzf "$ASSET" | grep -qx './lib/ollama/vulkan/libggml-vulkan.so'
+          tar -tzf "$ASSET" | grep -qx './lib/ollama/llama-server'
+          tar -tzf "$ASSET" | grep -qE '^\./lib/ollama/libggml-base\.so$'
+          tar -tzf "$ASSET" | grep -qE '^\./lib/ollama/libggml-cpu.*\.so$'
+          tar -tzf "$ASSET" | grep -qE '^\./lib/ollama/.*libggml-vulkan.*\.so$'
       - name: Validate installer and npm package
         run: |
           set -euo pipefail

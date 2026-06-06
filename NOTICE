@@ -8,8 +8,8 @@ version lineage (published as v<upstream>-termux.N), and adds a Termux-first
 distribution flow with mobile-oriented runtime tuning (RAM detection per
 Android, big-core thread limit, flash attention on CPU-only, context-window
 limits per RAM tier, Vulkan loader path for Android, LD_LIBRARY_PATH fix on
-Termux runner subprocesses, Termux-only launcher integrations for Codex VL,
-Codex, Qwen Code, Claude Code, Hermes Agent). The Termux distribution work
+Termux runner subprocesses, Termux-only launcher integrations for Codex,
+Codex VL, Qwen Code, Pi). The Termux distribution work
 is maintained by Davide A. Guglielmi and distributed under the MIT license
 together with the upstream Ollama codebase.
 
