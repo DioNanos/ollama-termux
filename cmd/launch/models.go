@@ -24,10 +24,11 @@ import (
 )
 
 var recommendedModels = []ModelItem{
-	{Name: "kimi-k2.6:cloud", Description: "State-of-the-art coding, long-horizon execution, and multimodal agent swarm capability", Recommended: true, Details: api.ModelDetails{ContextLength: 262_144}, MaxOutputTokens: 262_144},
-	{Name: "qwen3.5:cloud", Description: "Reasoning, coding, and agentic tool use with vision", Recommended: true, Details: api.ModelDetails{ContextLength: 262_144}, MaxOutputTokens: 32_768},
+	{Name: "kimi-k2.7-code:cloud", Description: "State-of-the-art coding, long-horizon execution, and multimodal agent swarm capability", Recommended: true, Details: api.ModelDetails{ContextLength: 262_144}, MaxOutputTokens: 262_144},
+	{Name: "minimax-m3:cloud", Description: "Fast, efficient coding and real-world productivity with a large context", Recommended: true, Details: api.ModelDetails{ContextLength: 524_288}, MaxOutputTokens: 131_072},
+	{Name: "deepseek-v4-pro:cloud", Description: "Frontier reasoning and coding with a 1M-token context", Recommended: true, Details: api.ModelDetails{ContextLength: 1_048_576}, MaxOutputTokens: 65_536},
 	{Name: "glm-5.1:cloud", Description: "Reasoning and code generation", Recommended: true, Details: api.ModelDetails{ContextLength: 202_752}, MaxOutputTokens: 131_072},
-	{Name: "minimax-m2.7:cloud", Description: "Fast, efficient coding and real-world productivity", Recommended: true, Details: api.ModelDetails{ContextLength: 204_800}, MaxOutputTokens: 128_000},
+	{Name: "gemini-3-flash-preview:cloud", Description: "Fast multimodal reasoning and tool use with a 1M-token context", Recommended: true, Details: api.ModelDetails{ContextLength: 1_048_576}, MaxOutputTokens: 65_536},
 	{Name: "gemma4", Description: "Reasoning and code generation locally", Recommended: true, VRAMBytes: 12 * format.GigaByte},
 	{Name: "qwen3.5", Description: "Reasoning, coding, and visual understanding locally", Recommended: true, VRAMBytes: 14 * format.GigaByte},
 }
@@ -56,6 +57,8 @@ var extraCloudModelLimits = map[string]cloudModelLimit{
 	"cogito-2.1:671b":     {Context: 163_840, Output: 65_536},
 	"deepseek-v3.1:671b":  {Context: 163_840, Output: 163_840},
 	"deepseek-v3.2":       {Context: 163_840, Output: 65_536},
+	"deepseek-v4-flash":   {Context: 1_048_576, Output: 65_536},
+	"devstral-small-2":    {Context: 262_144, Output: 65_536},
 	"gemma4:31b":          {Context: 262_144, Output: 131_072},
 	"glm-4.6":             {Context: 202_752, Output: 131_072},
 	"glm-4.7":             {Context: 202_752, Output: 131_072},
@@ -67,7 +70,12 @@ var extraCloudModelLimits = map[string]cloudModelLimit{
 	"kimi-k2.5":           {Context: 262_144, Output: 262_144},
 	"kimi-k2.6":           {Context: 262_144, Output: 262_144},
 	"kimi-k2-thinking":    {Context: 262_144, Output: 262_144},
+	"minimax-m2.1":        {Context: 204_800, Output: 128_000},
+	"minimax-m2.5":        {Context: 204_800, Output: 128_000},
+	"minimax-m2.7":        {Context: 204_800, Output: 128_000},
 	"nemotron-3-nano:30b": {Context: 1_048_576, Output: 131_072},
+	"nemotron-3-super":    {Context: 262_144, Output: 131_072},
+	"nemotron-3-ultra":    {Context: 262_144, Output: 131_072},
 	"qwen3-coder:480b":    {Context: 262_144, Output: 65_536},
 	"qwen3-coder-next":    {Context: 262_144, Output: 32_768},
 	"qwen3-next:80b":      {Context: 262_144, Output: 32_768},

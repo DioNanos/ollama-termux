@@ -523,13 +523,13 @@ func TestBuildModelList_ExistingCloudModelsNotPushedToBottom(t *testing.T) {
 func TestBuildModelList_HasRecommendedCloudModel_OnlyNonInstalledAtBottom(t *testing.T) {
 	existing := []modelInfo{
 		{Name: "llama3.2:latest", Remote: false},
-		{Name: "kimi-k2.6:cloud", Remote: true},
+		{Name: "kimi-k2.7-code:cloud", Remote: true},
 	}
 
 	items, _, _, _ := buildModelList(existing, nil, "")
 	got := names(items)
 
-	// kimi-k2.6:cloud is installed so it sorts normally;
+	// kimi-k2.7-code:cloud is installed so it sorts normally;
 	// the rest of the recommendations are not installed so they go to the bottom
 	// All recs pinned at top (cloud first in mixed case), then non-recs
 	want := recommendedNames("llama3.2")
@@ -539,7 +539,7 @@ func TestBuildModelList_HasRecommendedCloudModel_OnlyNonInstalledAtBottom(t *tes
 
 	for _, item := range items {
 		isCloud := strings.HasSuffix(item.Name, ":cloud")
-		isInstalled := slices.Contains([]string{"kimi-k2.6:cloud", "llama3.2"}, item.Name)
+		isInstalled := slices.Contains([]string{"kimi-k2.7-code:cloud", "llama3.2"}, item.Name)
 		if isInstalled || isCloud {
 			if strings.HasSuffix(item.Description, "(not downloaded)") {
 				t.Errorf("installed or cloud model %q should not have '(not downloaded)' suffix, got %q", item.Name, item.Description)
@@ -606,11 +606,11 @@ func TestBuildModelList_ReturnsExistingAndCloudMaps(t *testing.T) {
 	if !cloudModels["glm-5.1:cloud"] {
 		t.Error("glm-5.1:cloud should be in cloudModels")
 	}
-	if !cloudModels["kimi-k2.6:cloud"] {
-		t.Error("kimi-k2.6:cloud should be in cloudModels (recommended cloud)")
+	if !cloudModels["kimi-k2.7-code:cloud"] {
+		t.Error("kimi-k2.7-code:cloud should be in cloudModels (recommended cloud)")
 	}
-	if !cloudModels["qwen3.5:cloud"] {
-		t.Error("qwen3.5:cloud should be in cloudModels (recommended cloud)")
+	if !cloudModels["minimax-m3:cloud"] {
+		t.Error("minimax-m3:cloud should be in cloudModels (recommended cloud)")
 	}
 	if cloudModels["llama3.2"] {
 		t.Error("llama3.2 should not be in cloudModels")
@@ -627,7 +627,7 @@ func TestBuildModelList_RecommendedFieldSet(t *testing.T) {
 
 	for _, item := range items {
 		switch item.Name {
-		case "gemma4", "qwen3.5", "glm-5.1:cloud", "kimi-k2.6:cloud", "qwen3.5:cloud":
+		case "gemma4", "qwen3.5", "glm-5.1:cloud", "kimi-k2.7-code:cloud", "minimax-m3:cloud", "deepseek-v4-pro:cloud", "gemini-3-flash-preview:cloud":
 			if !item.Recommended {
 				t.Errorf("%q should have Recommended=true", item.Name)
 			}
@@ -685,7 +685,7 @@ func TestBuildModelList_RecsAboveNonRecs(t *testing.T) {
 	lastRecIdx := -1
 	firstNonRecIdx := len(got)
 	for i, name := range got {
-		isRec := name == "gemma4" || name == "qwen3.5" || name == "minimax-m2.7:cloud" || name == "glm-5.1:cloud" || name == "kimi-k2.6:cloud" || name == "qwen3.5:cloud"
+		isRec := name == "gemma4" || name == "qwen3.5" || name == "kimi-k2.7-code:cloud" || name == "glm-5.1:cloud" || name == "minimax-m3:cloud" || name == "deepseek-v4-pro:cloud" || name == "gemini-3-flash-preview:cloud"
 		if isRec && i > lastRecIdx {
 			lastRecIdx = i
 		}

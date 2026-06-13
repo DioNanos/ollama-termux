@@ -647,7 +647,7 @@ func TestBuildCodexModelEntryContextWindow(t *testing.T) {
 		{
 			name: "unknown cloud model without metadata uses fallback context",
 			model: LaunchModel{
-				Name: "deepseek-v4-pro:cloud",
+				Name: "unknown-vendor-model:cloud",
 			},
 			envContextLen: "64000",
 			wantContext:   codexFallbackContextWindow,

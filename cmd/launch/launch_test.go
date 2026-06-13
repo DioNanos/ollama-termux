@@ -975,7 +975,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationCanConfigureWithModelList(t *
 		t.Fatalf("LaunchIntegration returned error: %v", err)
 	}
 
-	if diff := compareStringSlices(runner.configuredModelLists, [][]string{{"gemma4", "kimi-k2.6:cloud", "qwen3.5:cloud", "glm-5.1:cloud", "minimax-m2.7:cloud", "qwen3.5", "qwen3:8b"}}); diff != "" {
+	if diff := compareStringSlices(runner.configuredModelLists, [][]string{{"gemma4", "kimi-k2.7-code:cloud", "minimax-m3:cloud", "deepseek-v4-pro:cloud", "glm-5.1:cloud", "gemini-3-flash-preview:cloud", "qwen3.5", "qwen3:8b"}}); diff != "" {
 		t.Fatalf("configured model list mismatch (-want +got):\n%s", diff)
 	}
 	if diff := compareStrings(runner.configured, []string{"gemma4"}); diff != "" {
@@ -2305,7 +2305,7 @@ func TestLaunchIntegration_EditorForceConfigure_FloatsCheckedModelsInPicker(t *t
 	editor := &launcherEditorRunner{models: []string{"llama3.2", "missing-local"}}
 	withIntegrationOverride(t, "droid", editor)
 
-	if err := config.SaveIntegration("droid", []string{"qwen3.5:cloud", "qwen3.5"}); err != nil {
+	if err := config.SaveIntegration("droid", []string{"glm-5.1:cloud", "qwen3.5"}); err != nil {
 		t.Fatalf("failed to seed config: %v", err)
 	}
 
@@ -2316,7 +2316,7 @@ func TestLaunchIntegration_EditorForceConfigure_FloatsCheckedModelsInPicker(t *t
 			gotItems = append(gotItems, item.Name)
 		}
 		gotPreChecked = append([]string(nil), preChecked...)
-		return []string{"qwen3.5:cloud", "qwen3.5"}, nil
+		return []string{"glm-5.1:cloud", "qwen3.5"}, nil
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2324,11 +2324,11 @@ func TestLaunchIntegration_EditorForceConfigure_FloatsCheckedModelsInPicker(t *t
 		case "/api/experimental/model-recommendations":
 			fmt.Fprint(w, `{"recommendations":[]}`)
 		case "/api/tags":
-			fmt.Fprint(w, `{"models":[{"name":"qwen3.5:cloud","remote_model":"qwen3.5"},{"name":"qwen3.5"}]}`)
+			fmt.Fprint(w, `{"models":[{"name":"glm-5.1:cloud","remote_model":"qwen3.5"},{"name":"qwen3.5"}]}`)
 		case "/api/show":
 			var req apiShowRequest
 			_ = json.NewDecoder(r.Body).Decode(&req)
-			if req.Model == "qwen3.5:cloud" {
+			if req.Model == "glm-5.1:cloud" {
 				fmt.Fprint(w, `{"remote_model":"qwen3.5"}`)
 				return
 			}
@@ -2359,7 +2359,7 @@ func TestLaunchIntegration_EditorForceConfigure_FloatsCheckedModelsInPicker(t *t
 	if len(gotPreChecked) < 2 {
 		t.Fatalf("expected prechecked models to be preserved, got %v", gotPreChecked)
 	}
-	if gotPreChecked[0] != "qwen3.5:cloud" {
+	if gotPreChecked[0] != "glm-5.1:cloud" {
 		t.Fatalf("expected saved default to remain first in prechecked, got %v", gotPreChecked)
 	}
 }
