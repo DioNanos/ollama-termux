@@ -2,16 +2,31 @@
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 
 def fetch_release(repo: str, tag: str) -> dict:
+    headers = {"User-Agent": "ollama-termux-release-notes"}
+    # Authenticate to use the 5000/hour limit instead of the 60/hour anonymous
+    # limit, which shared GitHub Actions runner IPs routinely exhaust (HTTP 403).
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(
         f"https://api.github.com/repos/{repo}/releases/tags/{tag}",
-        headers={"User-Agent": "ollama-termux-release-notes"},
+        headers=headers,
     )
-    with urllib.request.urlopen(req) as resp:
-        return json.load(resp)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.load(resp)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+        # Upstream notes are best-effort; never let an API hiccup block a release.
+        print(
+            f"warning: could not fetch upstream release {repo}@{tag}: {exc}",
+            file=sys.stderr,
+        )
+        return {}
 
 
 def main() -> int:

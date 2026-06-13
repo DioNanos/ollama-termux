@@ -148,6 +148,8 @@ jobs:
           fi
 
       - name: Generate release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
