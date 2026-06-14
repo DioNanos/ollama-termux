@@ -54,15 +54,17 @@ func (h *Hermes) Supported() error        { return termuxUnsupportedIntegration(
 func (h *HermesDesktop) Supported() error { return termuxUnsupportedIntegration("hermes-desktop") }
 func (v *VSCode) Supported() error        { return termuxUnsupportedIntegration("vscode") }
 
-// termuxRecommendedModels replaces the upstream recommendation list on Termux
-// with models sized for smartphone inference plus cloud-backed defaults.
+// termuxRecommendedModels replaces the upstream recommendation list on Termux.
+// Cloud-first, ordered by coding/agentic benchmark standing (June 2026), with
+// two phone-sized local models kept at the bottom as an offline fallback.
 var termuxRecommendedModels = []ModelItem{
-	{Name: "qwen3.5:4b", Description: "Recommended local default for coding, reasoning, and visual understanding", Recommended: true, VRAMBytes: 11 * format.GigaByte},
-	{Name: "gemma4:e4b", Description: "Recommended local default for reasoning and code generation", Recommended: true, VRAMBytes: 16 * format.GigaByte},
-	{Name: "qwen3.5:cloud", Description: "Cloud-backed qwen3.5 with larger context for agentic tool use", Recommended: true, Details: api.ModelDetails{ContextLength: 262_144}, MaxOutputTokens: 32_768},
-	{Name: "kimi-k2.6:cloud", Description: "State-of-the-art cloud coding and multimodal agents", Recommended: true, Details: api.ModelDetails{ContextLength: 262_144}, MaxOutputTokens: 262_144},
-	{Name: "glm-5.1:cloud", Description: "Cloud reasoning and code generation", Recommended: true, Details: api.ModelDetails{ContextLength: 202_752}, MaxOutputTokens: 131_072},
-	{Name: "minimax-m2.7:cloud", Description: "Fast cloud coding and real-world productivity", Recommended: true, Details: api.ModelDetails{ContextLength: 204_800}, MaxOutputTokens: 128_000},
+	{Name: "deepseek-v4-pro:cloud", Description: "Frontier coding and reasoning with a 1M-token context (LiveCodeBench/Codeforces leader)", Recommended: true, Details: api.ModelDetails{ContextLength: 1_048_576}, MaxOutputTokens: 65_536},
+	{Name: "kimi-k2.7-code:cloud", Description: "Coding-specialized long-horizon agent, successor to Kimi K2.6", Recommended: true, Details: api.ModelDetails{ContextLength: 262_144}, MaxOutputTokens: 262_144},
+	{Name: "minimax-m3:cloud", Description: "Fast agentic coding with a 512K context (top open-weight SWE-Bench Pro)", Recommended: true, Details: api.ModelDetails{ContextLength: 524_288}, MaxOutputTokens: 131_072},
+	{Name: "glm-5.1:cloud", Description: "Strong structured code generation and agentic web development", Recommended: true, Details: api.ModelDetails{ContextLength: 202_752}, MaxOutputTokens: 131_072},
+	{Name: "gemini-3-flash-preview:cloud", Description: "Fast, low-cost multimodal reasoning and tool use with a 1M-token context", Recommended: true, Details: api.ModelDetails{ContextLength: 1_048_576}, MaxOutputTokens: 65_536},
+	{Name: "qwen3.5:4b", Description: "Local offline fallback for coding, reasoning, and visual understanding", Recommended: true, VRAMBytes: 11 * format.GigaByte},
+	{Name: "gemma4:e4b", Description: "Local offline fallback for reasoning and code generation", Recommended: true, VRAMBytes: 16 * format.GigaByte},
 }
 
 func init() {
