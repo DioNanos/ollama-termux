@@ -1897,6 +1897,16 @@ func (s *Server) GenerateRoutes(rc *ollama.Registry) (http.Handler, error) {
 }
 
 func (s *Server) ModelRecommendationsExperimentalHandler(c *gin.Context) {
+	// On Termux serve the curated fork list instead of the live ollama.com
+	// recommendations, so the launcher model picker shows the models we
+	// maintain for Android rather than the upstream cloud default.
+	if envconfig.IsTermux() {
+		c.JSON(http.StatusOK, api.ModelRecommendationsResponse{
+			Recommendations: cloneModelRecommendations(termuxModelRecommendations),
+		})
+		return
+	}
+
 	recs := defaultModelRecommendations
 	source := "default"
 	if s.modelCaches != nil && s.modelCaches.recommendations != nil {

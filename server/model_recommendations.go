@@ -53,6 +53,12 @@ func newModelRecommendationsCache() *modelRecommendationsCache {
 }
 
 func (c *modelRecommendationsCache) Start(ctx context.Context) {
+	// On Termux the handler serves a curated static list and never consults
+	// this cache, so skip the background ollama.com refresh entirely to avoid
+	// pointless mobile-data usage.
+	if envconfig.IsTermux() {
+		return
+	}
 	c.once.Do(func() {
 		slog.Debug("starting model recommendations cache",
 			"default_recommendations", len(defaultModelRecommendations),
