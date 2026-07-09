@@ -36,7 +36,7 @@ behavior.
 ### Termux-Specific Runtime
 
 - Inference runs through the upstream `llama-server` subprocess (Ollama
-  0.30.x architecture), cross-built for Android ARM64
+  0.31.x architecture), cross-built for Android ARM64
 - RAM detection: 60-75% of MemTotal (Android-aware heuristic)
 - Thread limit: big cores only (cpufreq-based detection)
 - Context window: auto-limited based on available RAM tiers
@@ -69,20 +69,25 @@ automatically.
 
 | Order | CLI | Package | Status |
 |-------|-----|---------|--------|
-| 1 | **Codex** | `@mmmbuto/codex-cli-termux` | Termux fork |
-| 2 | **Codex VL** | `@mmmbuto/codex-vl` | Vivling-enhanced fork |
+| 1 | **Codex VL** | `@mmmbuto/codex-vl` | Vivling-enhanced fork — **primary on Termux** |
+| 2 | **Codex** | `@mmmbuto/codex-cli-termux` | Termux fork |
 | 3 | **Qwen Code** | `@mmmbuto/qwen-code-termux` | Termux fork |
 | 4 | **Pi** | `@earendil-works/pi-coding-agent` | Upstream npm, Termux-compatible |
+
+On Termux, Codex VL is the primary integration: it is listed first in the
+menu, and a bare `ollama` / `ollama launch` on a fresh install (no prior
+selection) drops straight into Codex VL. If Codex VL is not installed, the
+menu is shown instead.
 
 The launcher offers to install a missing integration when you select it
 (npm-based, with confirmation). Manual install also works:
 
 ```bash
+# Codex VL — our Vivling fork (primary on Termux)
+npm install -g @mmmbuto/codex-vl
+
 # Codex — our Termux fork
 npm install -g @mmmbuto/codex-cli-termux
-
-# Codex VL — our Vivling fork
-npm install -g @mmmbuto/codex-vl
 
 # Qwen Code — our Termux fork
 npm install -g @mmmbuto/qwen-code-termux
@@ -103,12 +108,13 @@ ollama serve &
 ollama pull qwen3.5:4b
 ollama pull gemma4:e4b
 
-# Interactive menu: pick chat or one of the CLIs
+# On Termux, first run drops straight into Codex VL (primary);
+# otherwise pick chat or a CLI from the menu
 ollama
 
 # Or launch an integration directly
-ollama launch codex --model qwen3.5:4b
 ollama launch codex-vl --model gemma4:e4b
+ollama launch codex --model qwen3.5:4b
 ollama launch qwen --model qwen3.5:4b
 ollama launch pi
 ```
