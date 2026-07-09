@@ -1,10 +1,13 @@
 package launch
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestTermuxUnsupportedIntegration(t *testing.T) {
@@ -230,4 +233,82 @@ func TestResolvedCommandSystemLinkerExec(t *testing.T) {
 	if cmd.Args[0] == "/system/bin/linker64" {
 		t.Errorf("did not expect linker routing when disabled, got %v", cmd.Args)
 	}
+}
+
+func newTestCobraCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetContext(context.Background())
+	return cmd
+}
+
+func TestRunTUIOrDefault(t *testing.T) {
+	t.Run("off termux always falls back to runTUI", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "")
+		setTestHome(t, t.TempDir())
+
+		called := false
+		wrapped := RunTUIOrDefault(func(*cobra.Command) { called = true })
+		wrapped(newTestCobraCmd())
+
+		if !called {
+			t.Error("expected runTUI to be called off Termux")
+		}
+	})
+
+	t.Run("on termux with prior selection falls back to runTUI", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "0.118.0")
+		setTestHome(t, t.TempDir())
+		if err := SetLastSelection("run"); err != nil {
+			t.Fatalf("SetLastSelection: %v", err)
+		}
+
+		called := false
+		wrapped := RunTUIOrDefault(func(*cobra.Command) { called = true })
+		wrapped(newTestCobraCmd())
+
+		if !called {
+			t.Error("expected runTUI to be called when a menu selection was already recorded")
+		}
+	})
+
+	t.Run("on termux with no history and codex-vl not installed falls back to runTUI", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "0.118.0")
+		setTestHome(t, t.TempDir())
+		// No fake codex-vl binary is placed on PATH or under $PREFIX, so
+		// CheckInstalled must report false and the wrapper must never
+		// attempt LaunchIntegration.
+		t.Setenv("PATH", t.TempDir())
+		t.Setenv("PREFIX", "")
+
+		called := false
+		wrapped := RunTUIOrDefault(func(*cobra.Command) { called = true })
+		wrapped(newTestCobraCmd())
+
+		if !called {
+			t.Error("expected runTUI to be called when codex-vl is not installed")
+		}
+	})
+}
+
+func TestLaunchCodexVLAsDefaultGating(t *testing.T) {
+	t.Run("returns false off termux without touching config", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "")
+		setTestHome(t, t.TempDir())
+
+		if launchCodexVLAsDefault(newTestCobraCmd()) {
+			t.Error("expected false off Termux")
+		}
+	})
+
+	t.Run("returns false when a selection was already recorded", func(t *testing.T) {
+		t.Setenv("TERMUX_VERSION", "0.118.0")
+		setTestHome(t, t.TempDir())
+		if err := SetLastSelection("codex"); err != nil {
+			t.Fatalf("SetLastSelection: %v", err)
+		}
+
+		if launchCodexVLAsDefault(newTestCobraCmd()) {
+			t.Error("expected false when history is present")
+		}
+	})
 }

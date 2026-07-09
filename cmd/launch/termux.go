@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/cmd/config"
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
+	"github.com/spf13/cobra"
 	"golang.org/x/mod/semver"
 )
 
@@ -22,7 +24,7 @@ import (
 
 // termuxIntegrationOrder is the launcher menu order on Termux. Only these
 // integrations are verified on real Android devices and exposed there.
-var termuxIntegrationOrder = []string{"codex", "codex-vl", "qwen", "pi"}
+var termuxIntegrationOrder = []string{"codex-vl", "codex", "qwen", "pi"}
 
 var termuxVisibleIntegrations = func() map[string]bool {
 	m := make(map[string]bool, len(termuxIntegrationOrder))
@@ -175,18 +177,65 @@ Without arguments, this is equivalent to running 'ollama' directly.
 Flags and extra arguments require an integration name.
 
 Supported integrations on Termux:
-  codex     Codex (Termux fork)
   codex-vl  Codex VL — Vivling-enhanced fork
+  codex     Codex (Termux fork)
   qwen      Qwen Code (Termux fork)
   pi        Pi
 
 Examples:
   ollama launch
-  ollama launch codex --model <model>
   ollama launch codex-vl --model <model>
+  ollama launch codex --model <model>
   ollama launch qwen
   ollama launch pi
   ollama launch codex -- -p myprofile (pass extra args to integration)`
+}
+
+// RunTUIOrDefault wraps runTUI so that, on Termux, the very first `ollama
+// launch` (no arguments, no prior menu selection, codex-vl already
+// installed) launches codex-vl directly instead of showing the interactive
+// menu. This makes codex-vl the de facto default entry point on a fresh
+// Termux install without touching the upstream TUI at all.
+//
+// Any other case -- off Termux, a menu selection already recorded, codex-vl
+// not installed, or any error/decline while launching codex-vl -- falls
+// back to runTUI(cmd). This path must never hard-fail `ollama launch`.
+func RunTUIOrDefault(runTUI func(cmd *cobra.Command)) func(cmd *cobra.Command) {
+	return func(cmd *cobra.Command) {
+		if launchCodexVLAsDefault(cmd) {
+			return
+		}
+		runTUI(cmd)
+	}
+}
+
+// launchCodexVLAsDefault attempts the codex-vl-as-default flow described on
+// RunTUIOrDefault. It reports whether codex-vl was launched (so the caller
+// should skip runTUI), and never returns an error: any failure is logged and
+// treated as "fall back to the menu".
+func launchCodexVLAsDefault(cmd *cobra.Command) bool {
+	if !envconfig.IsTermux() || config.LastSelection() != "" {
+		return false
+	}
+
+	spec, err := LookupIntegrationSpec("codex-vl")
+	if err != nil || spec.Install.CheckInstalled == nil || !spec.Install.CheckInstalled() {
+		return false
+	}
+
+	// Mirrors what `ollama launch codex-vl` (no flags) does in LaunchCmd's
+	// RunE: no model override, force the configure/model-select step since
+	// none was requested explicitly.
+	policy := defaultLaunchPolicy(isInteractiveSession(), false)
+	if err := LaunchIntegration(cmd.Context(), IntegrationLaunchRequest{
+		Name:           "codex-vl",
+		ForceConfigure: true,
+		Policy:         &policy,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "codex-vl default launch failed (%v), showing the menu instead\n", err)
+		return false
+	}
+	return true
 }
 
 // termuxExec builds an exec.Cmd for name, routing through the node
