@@ -2629,7 +2629,7 @@ func NewCLI() *cobra.Command {
 		deleteCmd,
 		runnerCmd,
 		gpuDiscoverCmd,
-		launch.LaunchCmd(checkServerHeartbeat, runInteractiveTUI),
+		launch.LaunchCmd(checkServerHeartbeat, launch.RunTUIOrDefault(runInteractiveTUI)),
 	)
 
 	return rootCmd
