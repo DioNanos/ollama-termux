@@ -48,6 +48,9 @@ def main() -> int:
         "## Termux adaptation",
         "- Launcher CLI support on Termux stays limited to Codex (Termux fork), Codex VL, Qwen Code (Termux fork), and Pi.",
         "- Unsupported upstream coding CLIs are disabled on Termux runtime.",
+        "- Android's system Vulkan loader now precedes Termux Mesa, preventing silent llvmpipe fallback.",
+        "- The mobile memory budget never inflates MemAvailable and backs off under Android zram/swap pressure.",
+        "- The npm installer requires a valid SHA-256 file and rejects unsafe or incomplete archives before installation.",
     ]
     if reuse_tag:
         lines.append(f"- Android ARM64 optimized libraries are reused from validated release assets: {reuse_tag}.")

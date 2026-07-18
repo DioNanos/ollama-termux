@@ -13,9 +13,11 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
+    if: ${{ github.event_name == 'workflow_dispatch' || (!github.event.release.draft && !github.event.release.prerelease) }}
     runs-on: ubuntu-latest
     steps:
       - name: Resolve tag
@@ -27,19 +29,26 @@ jobs:
           else
             TAG="${{ inputs.release_tag }}"
           fi
-          case "$TAG" in
-            v*) ;;
-            *) echo "Release tag must start with v"; exit 1 ;;
-          esac
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-termux\.[1-9][0-9]*$ ]]; then
+            echo "Invalid stable release tag: $TAG"
+            exit 1
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '[.draft,.prerelease] | @tsv')"
+            test "$RELEASE_STATE" = $'false\tfalse'
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          fetch-depth: 0
           ref: ${{ steps.meta.outputs.tag }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -50,17 +59,48 @@ jobs:
       - name: Validate version and release assets
         run: |
           set -euo pipefail
+          PACKAGE="$(node -p "require('./package.json').name")"
           VERSION="$(node -p "require('./package.json').version")"
           TAG="v${VERSION}"
+          test "$PACKAGE" = "@mmmbuto/ollama-termux"
           test "${{ steps.meta.outputs.tag }}" = "$TAG"
+          test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "$TAG")"
+          test "$(node -p "require('./package.json').publishConfig.tag")" = "latest"
           BASE_URL="https://github.com/DioNanos/ollama-termux/releases/download/${TAG}"
-          curl -fI -L "${BASE_URL}/ollama-termux-${VERSION}-android-arm64.tar.gz"
-          curl -fI -L "${BASE_URL}/ollama-termux-${VERSION}-android-arm64.tar.gz.sha256"
+          ASSET="ollama-termux-${VERSION}-android-arm64.tar.gz"
+          curl --fail --show-error --silent --location --proto '=https' --tlsv1.2 \
+            "${BASE_URL}/${ASSET}" -o "$RUNNER_TEMP/$ASSET"
+          curl --fail --show-error --silent --location --proto '=https' --tlsv1.2 \
+            "${BASE_URL}/${ASSET}.sha256" -o "$RUNNER_TEMP/${ASSET}.sha256"
+          python3 .github/scripts/verify_termux_archive.py \
+            "$RUNNER_TEMP/$ASSET" "$RUNNER_TEMP/${ASSET}.sha256" --require-vulkan
+
+      - name: Reject npm version collisions
+        run: |
+          set -euo pipefail
+          PACKAGE="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          set +e
+          npm view "${PACKAGE}@${VERSION}" version --json >"$RUNNER_TEMP/npm-view.out" 2>"$RUNNER_TEMP/npm-view.err"
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -eq 0 ]; then
+            echo "npm version collision: ${PACKAGE}@${VERSION} already exists"
+            exit 1
+          fi
+          if ! grep -q 'E404' "$RUNNER_TEMP/npm-view.err"; then
+            cat "$RUNNER_TEMP/npm-view.err"
+            echo "npm registry lookup failed without a confirmed 404"
+            exit 1
+          fi
 
       - name: Dry-run package
-        run: npm pack --dry-run
+        run: |
+          set -euo pipefail
+          npm pack --dry-run
+          npm publish --dry-run --access public --tag latest
 
       - name: Publish package
-        run: npm publish --access public
+        run: npm publish --access public --tag latest --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

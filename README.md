@@ -30,18 +30,21 @@ behavior.
 - Uses `termux-open-url` for browser/OAuth flows
 - Tunes CPU thread selection, memory heuristics, and context limits for
   modern phones
+- Resolves Vulkan through Android's system loader before Termux Mesa, avoiding
+  silent llvmpipe/CPU fallback
 - Ships prebuilt Android ARM64 release assets through GitHub Releases and
   installs them through the npm package
 
 ### Termux-Specific Runtime
 
 - Inference runs through the upstream `llama-server` subprocess (Ollama
-  0.31.x architecture), cross-built for Android ARM64
-- RAM detection: 60-75% of MemTotal (Android-aware heuristic)
+  0.32.x architecture), cross-built for Android ARM64
+- RAM budget: never exceeds Linux `MemAvailable`; reserves Android headroom
+  and backs off further when zram/swap is nearly exhausted
 - Thread limit: big cores only (cpufreq-based detection)
 - Context window: auto-limited based on available RAM tiers
-- Library paths: `$PREFIX/lib` + `/system/lib64` (Android Vulkan loader)
-  wired into the `llama-server` subprocess
+- Library paths: `/system/lib64` before `$PREFIX/lib`, wired into the
+  `llama-server` subprocess so the vendor driver wins over Termux Mesa/llvmpipe
 
 ---
 
@@ -119,6 +122,14 @@ ollama launch qwen --model qwen3.5:4b
 ollama launch pi
 ```
 
+### Larger phone models
+
+`ornith:9b` can be pulled by this Ollama base and is the largest Ornith variant
+worth testing on a 16 GB phone. Its advertised 256K context is not a mobile
+target: the fork clamps context from the conservative live-memory budget. Start
+with the default/4K context and `OLLAMA_VULKAN=1`; stop if Android begins heavy
+zram swapping. `ornith:35b` is not a supported phone target.
+
 ---
 
 ## Build
@@ -136,11 +147,16 @@ See [docs/BUILDING.md](./docs/BUILDING.md) for the full cross-build flow.
 
 ## Devices
 
-Tuned for modern ARM64 phones:
+Runtime-validated device:
 
-- Pixel 9 Pro / Tensor G4
-- Galaxy S24+ / Snapdragon 8 Gen 3
-- Galaxy S25 Ultra / Snapdragon 8 Elite
+- Pixel 9 Pro / Tensor G4 / Mali-G715 (CPU and Android-system-loader Vulkan)
+
+Additional ARM64 targets covered by runtime-dispatched CPU variants and the
+Android Vulkan path, but still requiring release-candidate device validation:
+
+- ASUS ROG Phone 3 / Snapdragon 865+ / Adreno 650
+- Galaxy S24+ / Snapdragon 8 Gen 3 / Adreno
+- Galaxy S25 Ultra / Snapdragon 8 Elite / Adreno
 
 CPU backends: runtime-dispatched llama.cpp variant libraries
 (`GGML_CPU_ALL_VARIANTS`), selected per device at startup.

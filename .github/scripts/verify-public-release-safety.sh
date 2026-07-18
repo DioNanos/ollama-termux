@@ -28,13 +28,21 @@ check_glob '.env' 'dotenv'
 check_glob '.env.*' 'dotenv'
 
 secret_pattern='(-----BEGIN (RSA|EC|DSA|OPENSSH|PGP) PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk_live_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,})'
+public_leak_pattern='(/home/'"dag"'/|Nexus'"Files"'|Docs'"Hub"'|ACTIVE_'"WORK"'\.md|cloud-('"Dev"'|'"Fork"'|'"SysAdmin"')|KIMI_[A-Z0-9_]*'"AUDIT"'|GLM[0-9._-]*_'"AUDIT"')'
+scan_output="$(mktemp)"
+trap 'rm -f "$scan_output"' EXIT
 
-if git ls-files -z | xargs -0 rg -nI --color=never -e "$secret_pattern" >/tmp/ollama-termux-public-safety.out 2>/dev/null; then
+if git ls-files -z | xargs -0 rg -nI --color=never -e "$secret_pattern" >"$scan_output" 2>/dev/null; then
     echo "ERROR: potential secret-like content found in tracked files:"
-    cat /tmp/ollama-termux-public-safety.out
+    cat "$scan_output"
     fail=1
 fi
-rm -f /tmp/ollama-termux-public-safety.out
+
+if git ls-files -z | xargs -0 rg -nI --color=never -e "$public_leak_pattern" >"$scan_output" 2>/dev/null; then
+    echo "ERROR: internal path or audit marker found in tracked files:"
+    cat "$scan_output"
+    fail=1
+fi
 
 if [ "$fail" -ne 0 ]; then
     exit 1

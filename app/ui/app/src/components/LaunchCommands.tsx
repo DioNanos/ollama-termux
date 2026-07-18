@@ -41,11 +41,12 @@ const LAUNCH_COMMANDS: LaunchCommand[] = [
     iconClassName: "h-7 w-7",
   },
   {
-    id: "hermes",
-    name: "Hermes Agent",
-    command: "ollama launch hermes",
-    description: "Self-improving AI agent built by Nous Research",
-    icon: "/launch-icons/hermes-agent.svg",
+    id: "pi",
+    name: "Pi",
+    command: "ollama launch pi",
+    description: "Coding agent with Ollama model integration",
+    icon: "/launch-icons/pi.svg",
+    darkIcon: "/launch-icons/pi-dark.svg",
     iconClassName: "h-7 w-7",
   },
 ];
@@ -63,11 +64,26 @@ export default function LaunchCommands() {
         >
           {item.darkIcon ? (
             <picture>
-              <source srcSet={item.darkIcon} media="(prefers-color-scheme: dark)" />
-              <img src={item.icon} alt="" className={`${item.iconClassName ?? "h-8 w-8"} rounded-sm`} />
+              <source
+                srcSet={item.darkIcon}
+                media="(prefers-color-scheme: dark)"
+              />
+              <img
+                src={item.icon}
+                alt=""
+                className={`${item.iconClassName ?? "h-8 w-8"} rounded-sm`}
+              />
             </picture>
           ) : (
-            <img src={item.icon} alt="" className={item.borderless ? "h-full w-full rounded-xl" : `${item.iconClassName ?? "h-8 w-8"} rounded-sm`} />
+            <img
+              src={item.icon}
+              alt=""
+              className={
+                item.borderless
+                  ? "h-full w-full rounded-xl"
+                  : `${item.iconClassName ?? "h-8 w-8"} rounded-sm`
+              }
+            />
           )}
         </div>
 
@@ -88,7 +104,7 @@ export default function LaunchCommands() {
               title="Copy command to clipboard"
               className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-200/60 dark:hover:bg-neutral-700/70"
               onCopy={() => {
-                setSettings({ LastHomeView: item.id }).catch(() => { });
+                setSettings({ LastHomeView: item.id }).catch(() => {});
               }}
             />
           </div>

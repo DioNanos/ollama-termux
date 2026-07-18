@@ -90,16 +90,12 @@ reuse_prebuilt_termux_libs() {
     local archive_path="${tmp_dir}/${asset}"
 
     echo "--- Reusing prebuilt Termux libs from ${repo}@${tag} ---"
-    curl -fsSL "$url" -o "$archive_path"
-
-    if curl -fsSL "$sha_url" -o "${archive_path}.sha256"; then
-        (
-            cd "$tmp_dir"
-            sha256sum -c "$(basename "${archive_path}.sha256")"
-        )
-    else
-        echo "WARNING: no SHA256 file available for ${asset}; continuing without checksum verification"
-    fi
+    curl --fail --show-error --silent --location --proto '=https' --tlsv1.2 \
+        "$url" -o "$archive_path"
+    curl --fail --show-error --silent --location --proto '=https' --tlsv1.2 \
+        "$sha_url" -o "${archive_path}.sha256"
+    python3 "$ROOT_DIR/.github/scripts/verify_termux_archive.py" \
+        "$archive_path" "${archive_path}.sha256"
 
     tar -xzf "$archive_path" -C "$tmp_dir"
     if [ ! -d "$tmp_dir/lib/ollama" ]; then
@@ -235,7 +231,7 @@ else
         exit 1
     fi
     echo "  Installed runtime:"
-    ls -1 "$DIST_DIR/lib/ollama" | sed 's/^/    /'
+    find "$DIST_DIR/lib/ollama" -mindepth 1 -maxdepth 1 -printf '    %f\n' | sort
     echo ""
 
     # --- Step 1b: Optional Vulkan backend (separate pass, upstream model) ---
@@ -275,7 +271,7 @@ else
             exit 1
         fi
         echo "  Installed Vulkan backend:"
-        ls -1 "$DIST_DIR/lib/ollama/vulkan" | sed 's/^/    /'
+        find "$DIST_DIR/lib/ollama/vulkan" -mindepth 1 -maxdepth 1 -printf '    %f\n' | sort
         echo ""
     fi
 fi

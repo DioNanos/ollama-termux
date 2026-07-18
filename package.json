@@ -1,6 +1,6 @@
 {
   "name": "@mmmbuto/ollama-termux",
-  "version": "0.31.2-termux.1",
+  "version": "0.32.1-termux.1",
   "description": "Upstream Ollama published as a Termux-first Android ARM64 fork with prebuilt release assets and mobile-oriented runtime tuning.",
   "keywords": [
     "ollama",
@@ -35,19 +35,21 @@
   "files": [
     "install.js",
     "README.md",
+    "CHANGELOG.md",
     "docs/BUILDING.md",
     "docs/BENCHMARKS.md",
     "docs/VULKAN_ANDROID_LOADER.md"
   ],
   "bin": {
-    "ollama-termux": "./install.js"
+    "ollama-termux": "install.js"
   },
   "publishConfig": {
     "access": "public",
-    "tag": "next"
+    "tag": "latest"
   },
   "scripts": {
-    "postinstall": "node install.js"
+    "postinstall": "node install.js",
+    "test:installer": "node --test tests/install.test.js"
   },
   "dependencies": {},
   "devDependencies": {}

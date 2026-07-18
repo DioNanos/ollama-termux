@@ -15,7 +15,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: Ref to build for verify-only dispatch, defaults to the selected branch or tag
+        description: Ref to build for verify-only; required before the release tag exists
         required: false
         default: ""
         type: string
@@ -46,6 +46,9 @@ jobs:
     env:
       NDK_VERSION: r27c
       NDK_DIR: ${{ github.workspace }}/android-ndk/android-ndk-r27c
+      # Canonical size/SHA-1 from Google's repository2-3.xml, ndk;27.2.12479018.
+      NDK_SIZE: "663987688"
+      NDK_SHA1: 090e8083a715fdb1a3e402d0763c388abb03fb4e
     steps:
       - name: Resolve release tag
         id: meta
@@ -57,7 +60,7 @@ jobs:
             PUBLISH_RELEASE="${{ inputs.publish_release }}"
             BUILD_VULKAN="${{ inputs.build_vulkan }}"
             if [ -z "$CHECKOUT_REF" ]; then
-              CHECKOUT_REF="${GITHUB_REF_NAME}"
+              CHECKOUT_REF="$TAG"
             fi
           else
             TAG="${GITHUB_REF_NAME}"
@@ -65,10 +68,10 @@ jobs:
             PUBLISH_RELEASE="1"
             BUILD_VULKAN="1"
           fi
-          case "$TAG" in
-            v*-termux*) ;;
-            *) echo "Invalid release tag: $TAG"; exit 1 ;;
-          esac
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-termux\.[1-9][0-9]*$ ]]; then
+            echo "Invalid stable release tag: $TAG"
+            exit 1
+          fi
           case "$PUBLISH_RELEASE" in
             0|1) ;;
             *) echo "Invalid publish_release: $PUBLISH_RELEASE"; exit 1 ;;
@@ -77,26 +80,45 @@ jobs:
             0|1) ;;
             *) echo "Invalid build_vulkan: $BUILD_VULKAN"; exit 1 ;;
           esac
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "checkout_ref=$CHECKOUT_REF" >> "$GITHUB_OUTPUT"
-          echo "publish_release=$PUBLISH_RELEASE" >> "$GITHUB_OUTPUT"
-          echo "build_vulkan=$BUILD_VULKAN" >> "$GITHUB_OUTPUT"
+          if [ "$PUBLISH_RELEASE" = "1" ] && [ "$CHECKOUT_REF" != "$TAG" ]; then
+            echo "Published releases must be built from their exact tag"
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "checkout_ref=$CHECKOUT_REF"
+            echo "publish_release=$PUBLISH_RELEASE"
+            echo "build_vulkan=$BUILD_VULKAN"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           ref: ${{ steps.meta.outputs.checkout_ref }}
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+
+      - name: Bind source, tag and package version
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          test "v${VERSION}" = "${{ steps.meta.outputs.tag }}"
+          test "$(node -p "require('./package.json').name")" = "@mmmbuto/ollama-termux"
+          test "$(node -p "require('./package.json').publishConfig.tag")" = "latest"
+          if [ "${{ steps.meta.outputs.publish_release }}" = "1" ]; then
+            TAG_COMMIT="$(git rev-list -n 1 "${{ steps.meta.outputs.tag }}")"
+            test -n "$TAG_COMMIT"
+            test "$(git rev-parse HEAD)" = "$TAG_COMMIT"
+          fi
 
       - name: Install build dependencies
         run: |
@@ -112,8 +134,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$(dirname "$NDK_DIR")"
-          curl -fsSL "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip" -o /tmp/android-ndk.zip
-          unzip -q /tmp/android-ndk.zip -d "$(dirname "$NDK_DIR")"
+          NDK_ARCHIVE="$RUNNER_TEMP/android-ndk-${NDK_VERSION}-linux.zip"
+          curl --fail --show-error --silent --location --proto '=https' --tlsv1.2 \
+            "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip" \
+            -o "$NDK_ARCHIVE"
+          test "$(stat -c '%s' "$NDK_ARCHIVE")" = "$NDK_SIZE"
+          printf '%s  %s\n' "$NDK_SHA1" "$NDK_ARCHIVE" | sha1sum --check --strict -
+          unzip -q "$NDK_ARCHIVE" -d "$(dirname "$NDK_DIR")"
+
+      - name: Run Termux regression tests
+        run: |
+          set -euo pipefail
+          go test -count=1 ./discover ./envconfig ./llm ./cmd/launch ./server
+          node --test tests/install.test.js
+          npm pack --dry-run
 
       - name: Build Android release assets
         env:
@@ -143,9 +177,15 @@ jobs:
           grep -qx './lib/ollama/llama-server' "$RUNNER_TEMP/termux-asset-files.txt"
           grep -qE '^\./lib/ollama/libggml-base\.so$' "$RUNNER_TEMP/termux-asset-files.txt"
           grep -qE '^\./lib/ollama/libggml-cpu.*\.so$' "$RUNNER_TEMP/termux-asset-files.txt"
+          VULKAN_ARGS=()
           if [ "${{ steps.meta.outputs.build_vulkan }}" = "1" ]; then
             grep -qE '^\./lib/ollama/.*libggml-vulkan.*\.so$' "$RUNNER_TEMP/termux-asset-files.txt"
+            VULKAN_ARGS=(--require-vulkan)
           fi
+          python3 .github/scripts/verify_termux_archive.py \
+            "dist/ollama-termux-${VERSION}-android-arm64.tar.gz" \
+            "dist/ollama-termux-${VERSION}-android-arm64.tar.gz.sha256" \
+            "${VULKAN_ARGS[@]}"
 
       - name: Generate release notes
         env:
@@ -155,11 +195,12 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           export TERMUX_VERSION="$VERSION"
           export UPSTREAM_TAG="v${VERSION%%-termux*}"
-          export TERMUX_REUSE_RELEASE_TAG="$(node -p "require('./package.json').termuxReuseReleaseTag || ''")"
+          TERMUX_REUSE_RELEASE_TAG="$(node -p "require('./package.json').termuxReuseReleaseTag || ''")"
+          export TERMUX_REUSE_RELEASE_TAG
           python3 .github/scripts/generate_termux_release_notes.py "$RUNNER_TEMP/release-notes.md"
 
       - name: Upload release assets for audit
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ollama-termux-${{ steps.meta.outputs.tag }}-android-arm64
           path: |
@@ -169,7 +210,7 @@ jobs:
 
       - name: Publish GitHub release
         if: steps.meta.outputs.publish_release == '1'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: ${{ steps.meta.outputs.tag }}

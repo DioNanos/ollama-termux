@@ -13,6 +13,7 @@ import (
 type memInfo struct {
 	TotalMemory uint64 `json:"total_memory,omitempty"`
 	FreeMemory  uint64 `json:"free_memory,omitempty"`
+	TotalSwap   uint64 `json:"total_swap,omitempty"`
 	FreeSwap    uint64 `json:"free_swap,omitempty"` // TODO split this out for system only
 }
 

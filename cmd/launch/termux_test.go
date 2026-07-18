@@ -27,7 +27,7 @@ func TestTermuxUnsupportedIntegration(t *testing.T) {
 				t.Errorf("%s: unexpected error on Termux: %v", name, err)
 			}
 		}
-		for _, name := range []string{"claude", "hermes", "hermes-desktop", "openclaw", "opencode", "cline", "copilot", "droid", "kimi", "pool", "vscode"} {
+		for _, name := range []string{"chatgpt", "claude", "hermes", "hermes-desktop", "openclaw", "opencode", "cline", "copilot", "droid", "kimi", "pool", "vscode"} {
 			if err := termuxUnsupportedIntegration(name); err == nil {
 				t.Errorf("%s: expected unsupported error on Termux", name)
 			}
@@ -39,7 +39,7 @@ func TestSupportedMethodsGateOnTermux(t *testing.T) {
 	t.Setenv("TERMUX_VERSION", "0.118.0")
 
 	gated := []SupportedIntegration{
-		&Claude{}, &Cline{}, &Copilot{}, &Droid{}, &Kimi{},
+		&CodexApp{}, &Claude{}, &Cline{}, &Copilot{}, &Droid{}, &Kimi{},
 		&OpenCode{}, &Openclaw{}, &Poolside{}, &Hermes{}, &HermesDesktop{}, &VSCode{},
 	}
 	for _, runner := range gated {
@@ -62,7 +62,7 @@ func TestListVisibleIntegrationSpecsOnTermux(t *testing.T) {
 			t.Errorf("expected %s in visible integrations on Termux, got %v", want, names)
 		}
 	}
-	for _, banned := range []string{"claude", "hermes", "hermes-desktop", "openclaw", "opencode", "cline", "copilot", "droid", "pool"} {
+	for _, banned := range []string{"chatgpt", "claude", "hermes", "hermes-desktop", "openclaw", "opencode", "cline", "copilot", "droid", "pool"} {
 		if slices.Contains(names, banned) {
 			t.Errorf("did not expect %s in visible integrations on Termux, got %v", banned, names)
 		}

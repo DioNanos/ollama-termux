@@ -28,9 +28,12 @@ Vulkan loader. Prepending `/system/lib64` makes the Android loader win.
 
 ## Implementation
 
-`llm/server.go:StartRunner` prepends `/system/lib64` to `LD_LIBRARY_PATH`
-when `isTermux()` is true. The runner subprocess inherits that, so when
-ggml-vulkan calls `dlopen("libvulkan.so")` it resolves the system loader.
+`llm/termux.go:termuxRunnerLibraryPaths` returns `/system/lib64` before the
+Termux library directories. `llm/llama_server.go:llamaServerLibraryPaths`
+places that ordered pair after the runner/backend directories but before the
+inherited `LD_LIBRARY_PATH`. The npm wrapper uses the same system-first order.
+When ggml-vulkan calls `dlopen("libvulkan.so")`, it therefore resolves the
+Android system loader rather than Termux Mesa.
 
 Build side: `scripts/build_termux.sh` adds an optional `BUILD_VULKAN=1`
 flag that compiles `ggml-vulkan` alongside the CPU backends. Shaders are
@@ -48,7 +51,9 @@ physical devices: 1
        vendor=0x13b5 device=0xb8a20000
 ```
 
-Without the override the same binary sees `llvmpipe` only. See
+An A/B probe of the 0.32.1 candidate confirmed that `$PREFIX/lib` first hides
+the hardware device, while `/system/lib64` first exposes `Vulkan0: Mali-G715`.
+See
 `scripts/probe/README.md` for the one-liner build.
 
 ## Known limitations
@@ -71,5 +76,6 @@ Without the override the same binary sees `llvmpipe` only. See
 |---|---|---|---|
 | Tensor G4 | Pixel 9/9 Pro | 0x13b5 (ARM) | `/vendor/lib64/hw/vulkan.mali.so` |
 | Tensor G5 | Pixel 10/10 Pro | 0x13b5 (ARM) | `/vendor/lib64/hw/vulkan.mali.so` |
+| Snapdragon 865+ | ASUS ROG Phone 3 | 0x5143 (Qualcomm) | `/vendor/lib64/hw/vulkan.adreno.so` |
 | Snapdragon 8 Gen 3 | Galaxy S24+ | 0x5143 (Qualcomm) | `/vendor/lib64/hw/vulkan.adreno.so` |
 | Snapdragon 8 Elite | Galaxy S25U | 0x5143 (Qualcomm) | `/vendor/lib64/hw/vulkan.adreno.so` |

@@ -43,8 +43,9 @@ Outputs:
 On the Linux build host:
 
 - Android NDK `r27c`
-- Go `>= 1.24`
+- the Go version declared by upstream in `go.mod`
 - Node.js (used to read package version)
+- Python 3 (release archive validation)
 - CMake `>= 3.24`
 - Ninja
 - `file`, `curl`, `unzip`
@@ -81,12 +82,20 @@ instead of the full variant matrix.
 ## Release Workflow
 
 1. Update `package.json` version to the next `x.y.z-termux.N`
-2. Push the corresponding tag `v<version>`
-3. GitHub Actions runs `.github/workflows/release.yaml`
-4. The workflow builds the Android tarball and checksum
-5. The workflow publishes the GitHub Release and uploads both assets
-6. `.github/workflows/npm-publish.yaml` verifies those assets exist
-7. npm publish can proceed safely
+2. Run `release-termux` manually with `publish_release=0`, the candidate branch
+   as `source_ref`, and `build_vulkan=1`
+3. Audit the uploaded tarball and checksum, then merge the sanitized candidate
+   to GitHub `main`
+4. Create the exact annotated tag `v<version>` only after approval
+5. The tag workflow rebuilds from that tag, validates its archive and publishes
+   the GitHub Release
+6. `.github/workflows/npm-publish.yaml` downloads and re-verifies the exact
+   release assets, rejects npm version collisions, and publishes stable builds
+   explicitly to `latest`
+
+Published releases are fail-closed: the source must be the exact tag, Android
+NDK r27c is size/checksum-bound, Vulkan is required, and the npm installer will
+not install an asset without a matching valid SHA-256 file.
 
 ## Manual Device Install
 
@@ -103,8 +112,10 @@ chmod +x bin/ollama
 ## Runtime Notes
 
 - Thread selection uses big-core detection via `cpufreq` when available
-- Free memory is derived from an Android-specific `MemTotal` heuristic
+- Free memory starts from Linux `MemAvailable`, is never inflated, reserves at
+  least 1 GiB (or 12.5% on larger devices) for Android, and is reduced again
+  when less than 10% of zram/swap remains
 - Flash attention follows llama-server `--flash-attn auto`
 - The best CPU backend variant is chosen at runtime by ggml feature detection
-- `$PREFIX/lib` and `/system/lib64` (Android Vulkan loader) are wired into the
-  `llama-server` subprocess library path
+- `/system/lib64` precedes `$PREFIX/lib` in the `llama-server` subprocess
+  library path so the Android vendor Vulkan loader cannot be shadowed by Mesa

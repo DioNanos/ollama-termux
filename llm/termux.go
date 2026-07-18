@@ -18,9 +18,9 @@ import (
 // no-ops off Termux so upstream behavior is preserved everywhere else.
 
 // limitTermuxContext clamps the context window to what phone memory can hold.
-// Android reports aggressive-caching-adjusted free memory (see
-// discover.adjustMemForAndroid); the tiers below keep the KV cache from
-// triggering the oom_killer on 8-16 GB devices.
+// discover.adjustMemForAndroid turns MemAvailable into a conservative loading
+// budget; the tiers below keep the KV cache from triggering Android's LMKD/OOM
+// path on 8-16 GB devices.
 func limitTermuxContext(opts *api.Options, systemInfo ml.SystemInfo) {
 	if !envconfig.IsTermux() {
 		return
@@ -114,18 +114,22 @@ func termuxRunnerCommand(exe string, params []string) *exec.Cmd {
 
 // termuxRunnerLibraryPaths returns extra library directories for the
 // llama-server subprocess on Termux:
-//   - $PREFIX/lib for libc++_shared.so and the Termux-built ggml libraries
 //   - /system/lib64 so dlopen("libvulkan.so") can reach the Android system
 //     Vulkan loader, which runs in a linker namespace with access to the
 //     vendor GPU driver
+//   - $PREFIX/lib for libc++_shared.so and the Termux-built ggml libraries
+//
+// /system/lib64 must precede $PREFIX/lib: Termux Mesa may otherwise shadow
+// libvulkan.so with a userspace loader that selects llvmpipe instead of the
+// phone's vendor GPU.
 func termuxRunnerLibraryPaths() []string {
 	if !envconfig.IsTermux() {
 		return nil
 	}
 
 	prefixes := []string{os.Getenv("PREFIX"), "/data/data/com.termux/files/usr"}
-	seen := map[string]bool{}
-	var paths []string
+	seen := map[string]bool{"/system/lib64": true}
+	paths := []string{"/system/lib64"}
 	for _, prefix := range prefixes {
 		if prefix == "" {
 			continue
@@ -136,5 +140,5 @@ func termuxRunnerLibraryPaths() []string {
 			paths = append(paths, lib)
 		}
 	}
-	return append(paths, "/system/lib64")
+	return paths
 }

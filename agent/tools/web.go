@@ -13,16 +13,13 @@ import (
 	internalcloud "github.com/ollama/ollama/internal/cloud"
 )
 
-var (
-	ErrWebSearchAuthRequired = errors.New("web search requires authentication")
-	ErrWebFetchAuthRequired  = errors.New("web fetch requires authentication")
-)
-
 const (
 	maxWebFetchContentRunes = 60_000
 	webSearchTimeout        = 15 * time.Second
 	webFetchTimeout         = 30 * time.Second
 )
+
+var ErrWebAuthRequired = errors.New("Not authenticated. Run `ollama signin` and try again.")
 
 type WebSearch struct{}
 
@@ -76,7 +73,7 @@ func (w *WebSearch) Execute(ctx context.Context, _ agent.ToolContext, args map[s
 	if err != nil {
 		var authErr api.AuthorizationError
 		if errors.As(err, &authErr) {
-			return agent.ToolResult{}, ErrWebSearchAuthRequired
+			return agent.ToolResult{}, ErrWebAuthRequired
 		}
 		return agent.ToolResult{}, err
 	}
@@ -140,8 +137,12 @@ func (w *WebFetch) Execute(ctx context.Context, _ agent.ToolContext, args map[st
 	if !ok || strings.TrimSpace(urlStr) == "" {
 		return agent.ToolResult{}, fmt.Errorf("url parameter is required")
 	}
-	if _, err := url.Parse(urlStr); err != nil {
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
 		return agent.ToolResult{}, fmt.Errorf("invalid URL: %w", err)
+	}
+	if scheme := strings.ToLower(parsed.Scheme); scheme != "http" && scheme != "https" {
+		return agent.ToolResult{}, fmt.Errorf("unsupported URL scheme %q: only http and https are allowed", parsed.Scheme)
 	}
 
 	client, err := api.ClientFromEnvironment()
@@ -156,7 +157,7 @@ func (w *WebFetch) Execute(ctx context.Context, _ agent.ToolContext, args map[st
 	if err != nil {
 		var authErr api.AuthorizationError
 		if errors.As(err, &authErr) {
-			return agent.ToolResult{}, ErrWebFetchAuthRequired
+			return agent.ToolResult{}, ErrWebAuthRequired
 		}
 		return agent.ToolResult{}, err
 	}
