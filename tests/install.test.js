@@ -44,7 +44,7 @@ test('archive listing accepts only the expected payload roots', () => {
     /escapes extraction root/,
   );
   assert.throws(
-    () => validateArchiveListing(`${archiveListing}\n./home/dag/internal.txt`),
+    () => validateArchiveListing(`${archiveListing}\n./private/internal.txt`),
     /unexpected archive path/,
   );
   assert.throws(
