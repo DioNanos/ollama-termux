@@ -25,6 +25,10 @@ of the `0.32.1-termux.1` baseline (`a8d284a54`).
   it (Play-Store SELinux domain), with `Setpgid` detach and a heartbeat wait,
   restoring the behaviour the removed `ensureServerRunning` provided. A unit
   test covers the non-Termux default error path.
+- Make the auto-start wait fail closed: the client now honors context
+  cancellation and returns an actionable timeout after 15 seconds instead of
+  waiting forever when the background server exits before becoming healthy.
+  Deterministic tests cover success, timeout and cancellation.
 - Carry forward the two mobile hardening fixes from `0.32.1-termux.1`,
   verified intact after the merge:
   - Vulkan loader order: `/system/lib64` precedes Termux library directories

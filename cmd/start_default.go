@@ -60,11 +60,25 @@ func startTermuxServer(ctx context.Context, client *api.Client) error {
 		_ = serverCmd.Process.Release()
 	}
 
-	// Wait for the server to become reachable before returning to the TUI.
+	return waitForTermuxServer(ctx, client.Heartbeat, 15*time.Second, 500*time.Millisecond)
+}
+
+func waitForTermuxServer(ctx context.Context, heartbeat func(context.Context) error, timeout, interval time.Duration) error {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
 	for {
-		time.Sleep(500 * time.Millisecond)
-		if err := client.Heartbeat(ctx); err == nil {
-			return nil
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return errors.New("timed out waiting for Termux server to start")
+		case <-ticker.C:
+			if err := heartbeat(ctx); err == nil {
+				return nil
+			}
 		}
 	}
 }
