@@ -62,6 +62,17 @@ def main() -> int:
             f"- ollama-termux-{version}-android-arm64.tar.gz",
             f"- ollama-termux-{version}-android-arm64.tar.gz.sha256",
             "",
+            "## Device compatibility",
+            (
+                "Vulkan behavior depends on the Android vendor driver. If model "
+                "loading is unstable, restart the server with `OLLAMA_VULKAN=0` "
+                "for CPU fallback."
+            ),
+            (
+                "The Adreno 650 investigation remains open in "
+                "[issue #1](https://github.com/DioNanos/ollama-termux/issues/1)."
+            ),
+            "",
             f"## Upstream {upstream_name} notes",
             upstream_body,
             "",

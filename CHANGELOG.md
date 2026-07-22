@@ -2,9 +2,8 @@
 
 ## 0.32.2-termux.1 — 2026-07-22
 
-This stable Termux release candidate is based on upstream Ollama `v0.32.1`
-incremented to upstream Ollama `v0.32.2` (24 commits since `v0.32.1`), on top
-of the `0.32.1-termux.1` baseline (`a8d284a54`).
+This stable Termux release merges upstream Ollama `v0.32.2` (24 commits since
+`v0.32.1`) on top of the `0.32.1-termux.1` baseline (`a8d284a54`).
 
 ### Termux changes
 
@@ -54,15 +53,14 @@ of the `0.32.1-termux.1` baseline (`a8d284a54`).
 - Linux toolchain bumped to GCC 13 (`#17244`); Windows ARM64 CUDA support
   (`#16931`) — not exercised on Android but merged cleanly.
 
-### Open release-policy item (coordinator/DAG gate)
+### Release channel and device compatibility
 
-`package.json` `publishConfig.tag` and `.github/workflows/npm-publish.yaml`
-still publish to `latest`, inherited from the `0.32.1-termux.1` candidate.
-The 2026-07-18 coordinator study recommended publishing to `next` first and
-keeping `latest = 0.30.8-termux.4` until the Pixel and ASUS device gates
-(plus the public issue #1 Vulkan crash on Snapdragon 865 / Adreno 650) are
-cleared. This is a release-policy decision for the coordinator/DAG; no
-publish, tag, GitHub release or dist-tag move is performed in this candidate.
+This version is published as the stable npm `latest` release. The Android
+ARM64 archive, Vulkan payload, installer safety and Termux regression suites
+are verified in CI. Vulkan behavior remains dependent on the Android vendor
+driver: affected Adreno 650 devices may need `OLLAMA_VULKAN=0` for CPU fallback
+while [issue #1](https://github.com/DioNanos/ollama-termux/issues/1) remains
+under investigation. Additional device validation continues after release.
 
 ### Mobile model note
 
