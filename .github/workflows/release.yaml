@@ -45,7 +45,9 @@ jobs:
     timeout-minutes: 150
     env:
       NDK_VERSION: r27c
-      NDK_DIR: ${{ github.workspace }}/android-ndk/android-ndk-r27c
+      # Keep the downloaded toolchain under an ignored path. Go's VCS stamping
+      # treats untracked files as a modified checkout, even for an exact tag.
+      NDK_DIR: ${{ github.workspace }}/build/android-ndk/android-ndk-r27c
       # Canonical size/SHA-1 from Google's repository2-3.xml, ndk;27.2.12479018.
       NDK_SIZE: "663987688"
       NDK_SHA1: 090e8083a715fdb1a3e402d0763c388abb03fb4e
@@ -114,7 +116,8 @@ jobs:
           test "v${VERSION}" = "${{ steps.meta.outputs.tag }}"
           test "$(node -p "require('./package.json').name")" = "@mmmbuto/ollama-termux"
           test "$(node -p "require('./package.json').publishConfig.tag")" = "latest"
-          if [ "${{ steps.meta.outputs.publish_release }}" = "1" ]; then
+          if [ "${{ steps.meta.outputs.checkout_ref }}" = "${{ steps.meta.outputs.tag }}" ] || \
+             [ "${{ steps.meta.outputs.publish_release }}" = "1" ]; then
             TAG_COMMIT="$(git rev-list -n 1 "${{ steps.meta.outputs.tag }}")"
             test -n "$TAG_COMMIT"
             test "$(git rev-parse HEAD)" = "$TAG_COMMIT"
@@ -148,6 +151,16 @@ jobs:
           go test -count=1 ./discover ./envconfig ./llm ./cmd ./cmd/launch ./server
           node --test tests/install.test.js
           npm pack --dry-run
+
+      - name: Verify clean VCS metadata before release build
+        run: |
+          set -euo pipefail
+          STATUS="$(git status --porcelain)"
+          if [ -n "$STATUS" ]; then
+            echo "Release checkout is dirty before the Go build:"
+            printf '%s\n' "$STATUS"
+            exit 1
+          fi
 
       - name: Build Android release assets
         env:
