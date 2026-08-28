@@ -140,6 +140,7 @@ export NDK_ROOT=~/android-ndk/android-ndk-r27c
 ```
 
 Output: `dist/ollama-termux-<version>-android-arm64.tar.gz`
+Supported integrations include [Claude Code](https://docs.ollama.com/integrations/claude-code), [Codex](https://docs.ollama.com/integrations/codex), [Copilot CLI](https://docs.ollama.com/integrations/copilot-cli), [DeepSeek Harness](https://docs.ollama.com/integrations/deepseek-harness), [Droid](https://docs.ollama.com/integrations/droid), and [OpenCode](https://docs.ollama.com/integrations/opencode).
 
 See [docs/BUILDING.md](./docs/BUILDING.md) for the full cross-build flow.
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.33.1-termux — 2026-08-28
+
+This EOL Termux release aligns the fork with upstream Ollama `v0.33.1` for
+Android ARM64. It preserves the fork-owned CI pipeline, Termux launcher and
+prebuilt archive verification while incorporating upstream runtime changes.
+
+### Termux changes
+
+- Keep the Android ARM64 release workflow with NDK checksum validation,
+  verify-only default, archive validation and CI-built `llama-server` assets.
+- Preserve Termux launcher/runtime compatibility and the npm installer safety
+  contract.
+- Remove the obsolete UI `LaunchCommands` component superseded upstream by the
+  shared `launchCommands` integration registry.
+
+This is the final EOL alignment release; no further upstream synchronization is
+promised.
+
+### Upstream highlights
+
+- Claude recommendation mappings and updated agent/runtime behavior from
+  upstream Ollama `v0.33.1`.
+- Updated model, parser, server and llama.cpp support carried by the upstream
+  release.
+
 ## 0.32.2-termux.1 — 2026-07-22
 
 This stable Termux release merges upstream Ollama `v0.32.2` (24 commits since
