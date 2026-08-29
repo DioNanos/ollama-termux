@@ -15,9 +15,12 @@ prebuilt archive verification while incorporating upstream runtime changes.
 - Remove the obsolete UI `LaunchCommands` component superseded upstream by the
   shared `launchCommands` integration registry.
 - Harden the public-release safety gate: `git grep`-based scanning with
-  explicit exit-code handling (0 = violation, 1 = clean, >1 = fail-closed) —
-  the previous `xargs rg` aggregation could never report a violation and
-  passed even on scanner errors.
+  explicit exit-code handling (0 = violation, 1 = clean, >1 = fail-closed).
+  The previous `xargs rg` pipeline passed on scanner errors, and when the
+  tracked tree was split across multiple xargs batches it also passed on
+  violations (rg's per-batch "no match" exit aggregated to 123, hiding every
+  match from the old `if`); on a single-batch checkout violations were still
+  caught.
 - Align the README with the launcher reality: only the verified Termux
   integrations (Codex VL, Codex, Qwen Code, Pi) are advertised, and the
   version lineage documents both `v<upstream>-termux` and `-termux.N` tag
