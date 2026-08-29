@@ -19,7 +19,7 @@ behavior.
 ### What We Keep From Upstream
 
 - Upstream Ollama source tree and MIT license
-- Upstream version lineage, published as `v<upstream>-termux.N`
+- Upstream version lineage, published as `v<upstream>-termux` (or, for patch releases, `v<upstream>-termux.N`)
 - Standard `ollama` CLI and server behavior
 
 ### What This Fork Changes
@@ -140,7 +140,7 @@ export NDK_ROOT=~/android-ndk/android-ndk-r27c
 ```
 
 Output: `dist/ollama-termux-<version>-android-arm64.tar.gz`
-Supported integrations include [Claude Code](https://docs.ollama.com/integrations/claude-code), [Codex](https://docs.ollama.com/integrations/codex), [Copilot CLI](https://docs.ollama.com/integrations/copilot-cli), [DeepSeek Harness](https://docs.ollama.com/integrations/deepseek-harness), [Droid](https://docs.ollama.com/integrations/droid), and [OpenCode](https://docs.ollama.com/integrations/opencode).
+The upstream project lists integrations such as [Claude Code](https://docs.ollama.com/integrations/claude-code), [Codex](https://docs.ollama.com/integrations/codex), [Copilot CLI](https://docs.ollama.com/integrations/copilot-cli), [DeepSeek Harness](https://docs.ollama.com/integrations/deepseek-harness), [Droid](https://docs.ollama.com/integrations/droid), and [OpenCode](https://docs.ollama.com/integrations/opencode); on Termux this build supports only the launcher-verified set above: **Codex**, **Codex VL**, **Qwen Code**, **Pi** — the other integrations are refused by the launcher and are not shipped in the Termux package.
 
 See [docs/BUILDING.md](./docs/BUILDING.md) for the full cross-build flow.
 
