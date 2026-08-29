@@ -185,9 +185,7 @@ func transposeForGatherMM(w *mlx.Array) *mlx.Array {
 	if w == nil || !w.Valid() || w.NumDims() != 3 {
 		return w
 	}
-	t := mlx.Transpose(w, 0, 2, 1).Clone()
-	mlx.Eval(t)
-	return t
+	return mlx.Transpose(w, 0, 2, 1).Clone()
 }
 
 // collectExpertProjection collects per-expert tensors, stacks them, and
@@ -242,15 +240,12 @@ func collectExpertProjection(tensors map[string]*mlx.Array, cfg *TextConfig, pre
 	}
 
 	stacked := mlx.Stack(weights, 0).Clone()
-	mlx.Eval(stacked)
 	out := &stackedExpertResult{Weight: stacked, Bits: bits, GroupSize: groupSize, Mode: mode}
 	if len(scales) == len(weights) {
 		out.Scales = mlx.Stack(scales, 0).Clone()
-		mlx.Eval(out.Scales)
 	}
 	if len(biases) == len(weights) {
 		out.Biases = mlx.Stack(biases, 0).Clone()
-		mlx.Eval(out.Biases)
 	}
 	return out
 }
@@ -984,7 +979,7 @@ func (m *Model) LoadWeights(tensors map[string]*mlx.Array) error {
 	return nil
 }
 
-func (m *Model) Forward(b *batch.Batch, caches []cache.Cache) *mlx.Array {
+func (m *Model) Forward(b *batch.Batch, caches []cache.Cache) (hidden, auxHidden *mlx.Array) {
 	dims := b.InputIDs.Dims()
 	B, L := int32(dims[0]), int32(dims[1])
 	positions := mlx.FromValues(b.SeqOffsets, len(b.SeqOffsets))
@@ -1033,7 +1028,8 @@ func (m *Model) Forward(b *batch.Batch, caches []cache.Cache) *mlx.Array {
 		}
 	}
 
-	return mlx.RMSNormFn(h, m.NormScaled, m.RMSNormEps)
+	out := mlx.RMSNormFn(h, m.NormScaled, m.RMSNormEps)
+	return out, out
 }
 
 func (m *Model) Unembed(x *mlx.Array) *mlx.Array {
@@ -1078,10 +1074,6 @@ func suppressTokenLogits(logits, bias *mlx.Array) *mlx.Array {
 	}
 
 	return logits.Add(bias.AsType(logits.DType()))
-}
-
-func (m *Model) NumLayers() int {
-	return len(m.Layers)
 }
 
 func (m *Model) MaxContextLength() int {

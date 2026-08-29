@@ -50,7 +50,6 @@ import (
 	"github.com/ollama/ollama/types/errtypes"
 	"github.com/ollama/ollama/types/model"
 	"github.com/ollama/ollama/version"
-	imagegenmanifest "github.com/ollama/ollama/x/imagegen/manifest"
 	xserver "github.com/ollama/ollama/x/server"
 )
 
@@ -200,14 +199,9 @@ func usesAutomaticNumBatch(model *Model, requestOpts map[string]any) bool {
 
 // scheduleRunner schedules a runner after validating inputs such as capabilities and model options.
 // It returns the allocated runner, model instance, and consolidated options if successful and error otherwise.
-func (s *Server) scheduleRunner(ctx context.Context, name string, caps []model.Capability, requestOpts map[string]any, keepAlive *api.Duration, shift *bool) (llm.LlamaServer, *Model, *api.Options, error) {
-	if name == "" {
+func (s *Server) scheduleRunner(ctx context.Context, model *Model, caps []model.Capability, requestOpts map[string]any, keepAlive *api.Duration, shift *bool) (llm.LlamaServer, *Model, *api.Options, error) {
+	if model == nil || model.Name == "" {
 		return nil, nil, nil, fmt.Errorf("model %w", errRequired)
-	}
-
-	model, err := GetModel(name)
-	if err != nil {
-		return nil, nil, nil, err
 	}
 
 	if slices.Contains(model.Config.ModelFamilies, "mllama") && len(model.ProjectorPaths) > 0 {
@@ -215,11 +209,8 @@ func (s *Server) scheduleRunner(ctx context.Context, name string, caps []model.C
 	}
 
 	if err := model.CheckCapabilities(caps...); err != nil {
-		return nil, nil, nil, fmt.Errorf("%s %w", name, err)
+		return nil, nil, nil, fmt.Errorf("%s %w", model.Name, err)
 	}
-
-	// Deprecated runner override option; ignore if present.
-	delete(requestOpts, "use_imagegen_runner")
 
 	numCtxAuto := usesAutomaticNumCtx(model, requestOpts)
 	embeddingBatchDefault := shouldApplyEmbeddingBatchDefault(model, requestOpts)
@@ -291,7 +282,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		return
 	}
 
-	m, err := GetModel(name.String())
+	m, err := s.getModel(name.String())
 	if err != nil {
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
@@ -423,9 +414,8 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		return
 	}
 
-	// Handle image generation models
 	if slices.Contains(m.Capabilities(), model.CapabilityImage) {
-		s.handleImageGenerate(c, req, name.String(), checkpointStart)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "image generation models are not currently supported"})
 		return
 	}
 
@@ -473,7 +463,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		}
 	}
 
-	r, m, opts, err := s.scheduleRunner(c.Request.Context(), name.String(), caps, req.Options, req.KeepAlive, req.Shift)
+	r, m, opts, err := s.scheduleRunner(c.Request.Context(), m, caps, req.Options, req.KeepAlive, req.Shift)
 	if errors.Is(err, errCapabilityCompletion) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%q does not support generate", req.Model)})
 		return
@@ -661,7 +651,12 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		// TODO (jmorganca): avoid building the response twice both here and below
 		var sb strings.Builder
 		defer close(ch)
-		if err := r.Completion(c.Request.Context(), llm.CompletionRequest{
+
+		ctx, cancel := context.WithCancel(c.Request.Context())
+		defer cancel()
+		var parserErr error
+
+		if err := r.Completion(ctx, llm.CompletionRequest{
 			Prompt:          prompt,
 			Media:           media,
 			Format:          req.Format,
@@ -690,7 +685,8 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 			if builtinParser != nil {
 				content, thinking, toolCalls, err := builtinParser.Add(cr.Content, cr.Done)
 				if err != nil {
-					ch <- gin.H{"error": err.Error()}
+					parserErr = err
+					cancel()
 					return
 				}
 				res.Response = content
@@ -736,13 +732,18 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 
 			ch <- res
 		}); err != nil {
-			s.sched.expireRunnersForRuntimeOOM(m, err)
-			var serr api.StatusError
-			if errors.As(err, &serr) {
-				ch <- gin.H{"error": serr.ErrorMessage, "status": serr.StatusCode}
-			} else {
-				ch <- gin.H{"error": err.Error()}
+			if parserErr == nil {
+				s.sched.expireRunnersForRuntimeOOM(m, err)
+				var serr api.StatusError
+				if errors.As(err, &serr) {
+					ch <- gin.H{"error": serr.ErrorMessage, "status": serr.StatusCode}
+				} else {
+					ch <- gin.H{"error": err.Error()}
+				}
 			}
+		}
+		if parserErr != nil {
+			ch <- gin.H{"error": parserErr.Error()}
 		}
 	}()
 
@@ -844,7 +845,13 @@ func (s *Server) EmbedHandler(c *gin.Context) {
 		return
 	}
 
-	r, m, opts, err := s.scheduleRunner(c.Request.Context(), name.String(), []model.Capability{}, req.Options, req.KeepAlive, nil)
+	m, err := s.getModel(name.String())
+	if err != nil {
+		handleScheduleError(c, req.Model, err)
+		return
+	}
+
+	r, m, opts, err := s.scheduleRunner(c.Request.Context(), m, []model.Capability{}, req.Options, req.KeepAlive, nil)
 	if err != nil {
 		handleScheduleError(c, req.Model, err)
 		return
@@ -1056,7 +1063,13 @@ func (s *Server) EmbeddingsHandler(c *gin.Context) {
 
 	name := modelRef.Name
 
-	r, m, _, err := s.scheduleRunner(c.Request.Context(), name.String(), []model.Capability{}, req.Options, req.KeepAlive, nil)
+	m, err := s.getModel(name.String())
+	if err != nil {
+		handleScheduleError(c, req.Model, err)
+		return
+	}
+
+	r, m, _, err := s.scheduleRunner(c.Request.Context(), m, []model.Capability{}, req.Options, req.KeepAlive, nil)
 	if err != nil {
 		handleScheduleError(c, req.Model, err)
 		return
@@ -1413,15 +1426,6 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		QuantizationLevel: m.Config.FileType,
 	}
 
-	// For image generation models, populate details from imagegen package
-	if slices.Contains(m.Capabilities(), model.CapabilityImage) {
-		if info, err := imagegenmanifest.GetModelInfo(name.String()); err == nil {
-			modelDetails.Family = info.Architecture
-			modelDetails.ParameterSize = format.HumanNumber(uint64(info.ParameterCount))
-			modelDetails.QuantizationLevel = info.Quantization
-		}
-	}
-
 	// For safetensors LLM models (experimental), populate details from config.json
 	if m.Config.ModelFormat == "safetensors" && slices.Contains(m.Config.Capabilities, "completion") {
 		if info, err := xserver.GetSafetensorsLLMInfo(name); err == nil {
@@ -1533,7 +1537,11 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		return resp, nil
 	}
 
-	if slices.Contains(m.Capabilities(), model.CapabilityImage) {
+	// For safetensors LLM models (experimental), populate ModelInfo from config.json
+	if m.Config.ModelFormat == "safetensors" && slices.Contains(m.Config.Capabilities, "completion") {
+		if info, err := xserver.GetSafetensorsLLMInfo(name); err == nil {
+			resp.ModelInfo = info
+		}
 		// Populate tensor info if verbose
 		if req.Verbose {
 			if tensors, err := xserver.GetSafetensorsTensorInfo(name); err == nil {
@@ -1543,11 +1551,10 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		return resp, nil
 	}
 
-	// For safetensors LLM models (experimental), populate ModelInfo from config.json
-	if m.Config.ModelFormat == "safetensors" && slices.Contains(m.Config.Capabilities, "completion") {
-		if info, err := xserver.GetSafetensorsLLMInfo(name); err == nil {
-			resp.ModelInfo = info
-		}
+	// Image generation models are stored as safetensors tensor layers with no
+	// GGUF model layer to introspect; return what we have (incl. the "image"
+	// capability) rather than failing to load a non-existent model file.
+	if slices.Contains(m.Capabilities(), model.CapabilityImage) {
 		// Populate tensor info if verbose
 		if req.Verbose {
 			if tensors, err := xserver.GetSafetensorsTensorInfo(name); err == nil {
@@ -1912,9 +1919,6 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET("/v1/models", middleware.ListMiddleware(), s.ListHandler)
 	r.GET("/v1/models/:model", cloudModelPathPassthroughMiddleware(cloudErrRemoteModelDetailsUnavailable), middleware.RetrieveMiddleware(), s.ShowHandler)
 	r.POST("/v1/responses", s.withInferenceRequestLogging("/v1/responses", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ResponsesMiddleware(), s.ChatHandler)...)
-	// OpenAI-compatible image generation endpoints
-	r.POST("/v1/images/generations", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ImageGenerationsMiddleware(), s.GenerateHandler)
-	r.POST("/v1/images/edits", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ImageEditsMiddleware(), s.GenerateHandler)
 	// OpenAI-compatible audio endpoint
 	r.POST("/v1/audio/transcriptions", middleware.TranscriptionMiddleware(), s.ChatHandler)
 
@@ -2168,6 +2172,11 @@ func (s *Server) WebFetchExperimentalHandler(c *gin.Context) {
 }
 
 func (s *Server) webExperimentalProxyHandler(c *gin.Context, proxyPath, disabledOperation string) {
+	// This endpoint is authenticated by the server's cloud signature. A client
+	// may have supplied an unrelated provider credential (for example, Codex's
+	// Responses API key); it must not be sent to the web-search service.
+	c.Request.Header.Del("Authorization")
+
 	body, err := readRequestBody(c.Request)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -2272,7 +2281,7 @@ func (s *Server) SignoutHandler(c *gin.Context) {
 func (s *Server) PsHandler(c *gin.Context) {
 	models := []api.ProcessModelResponse{}
 
-	for _, v := range s.sched.loaded {
+	for _, v := range s.sched.loadedModels() {
 		m := v.model
 		displayName := model.ParseName(m.ShortName).DisplayShortest()
 		modelDetails := api.ModelDetails{
@@ -2283,30 +2292,16 @@ func (s *Server) PsHandler(c *gin.Context) {
 			QuantizationLevel: m.Config.FileType,
 		}
 
-		mr := api.ProcessModelResponse{
-			Model:     displayName,
-			Name:      displayName,
-			Size:      int64(v.totalSize),
-			SizeVRAM:  int64(v.vramSize),
-			Digest:    m.Digest,
-			Details:   modelDetails,
-			ExpiresAt: v.expiresAt,
-		}
-		if v.llama != nil {
-			mr.ContextLength = v.llama.ContextLength()
-			total, vram := v.llama.MemorySize()
-			mr.Size = int64(total)
-			mr.SizeVRAM = int64(vram)
-		}
-		// The scheduler waits to set expiresAt, so if a model is loading it's
-		// possible that it will be set to the unix epoch. For those cases, just
-		// calculate the time w/ the sessionDuration instead.
-		var epoch time.Time
-		if v.expiresAt == epoch {
-			mr.ExpiresAt = time.Now().Add(v.sessionDuration)
-		}
-
-		models = append(models, mr)
+		models = append(models, api.ProcessModelResponse{
+			Model:         displayName,
+			Name:          displayName,
+			Size:          v.size,
+			SizeVRAM:      v.sizeVRAM,
+			Digest:        m.Digest,
+			Details:       modelDetails,
+			ExpiresAt:     v.expiresAt,
+			ContextLength: v.contextLength,
+		})
 	}
 
 	slices.SortStableFunc(models, func(i, j api.ProcessModelResponse) int {
@@ -2477,7 +2472,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 
 	if modelRef.Source == modelSourceCloud {
 		req.Model = modelRef.Base
-		if c.GetBool(legacyCloudAnthropicKey) {
+		if c.GetBool(cloudWebSearchOrchestrationKey) {
 			proxyCloudJSONRequestWithPath(c, req, "/api/chat", cloudErrRemoteInferenceUnavailable)
 			return
 		}
@@ -2493,7 +2488,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 		return
 	}
 
-	m, err := GetModel(name.String())
+	m, err := s.getModel(name.String())
 	if err != nil {
 		switch {
 		case os.IsNotExist(err):
@@ -2646,7 +2641,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 		}
 	}
 
-	r, m, opts, err := s.scheduleRunner(c.Request.Context(), name.String(), caps, req.Options, req.KeepAlive, req.Shift)
+	r, m, opts, err := s.scheduleRunner(c.Request.Context(), m, caps, req.Options, req.KeepAlive, req.Shift)
 	if errors.Is(err, errCapabilityCompletion) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%q does not support chat", req.Model)})
 		return
@@ -2784,6 +2779,8 @@ func (s *Server) ChatHandler(c *gin.Context) {
 			// sets up new context given parent context per request
 			ctx, cancel := context.WithCancel(c.Request.Context())
 
+			var parserErr error
+
 			err := r.Completion(ctx, llm.CompletionRequest{
 				Prompt:          prompt,
 				Media:           media,
@@ -2822,7 +2819,8 @@ func (s *Server) ChatHandler(c *gin.Context) {
 
 					content, thinking, toolCalls, err := builtinParser.Add(r.Content, r.Done)
 					if err != nil {
-						ch <- gin.H{"error": err.Error()}
+						parserErr = err
+						cancel()
 						return
 					}
 
@@ -2901,6 +2899,10 @@ func (s *Server) ChatHandler(c *gin.Context) {
 
 				ch <- res
 			})
+			if parserErr != nil {
+				ch <- gin.H{"error": parserErr.Error()}
+				return
+			}
 			if err != nil {
 				if structuredOutputsState == structuredOutputsState_ReadyToApply && strings.Contains(err.Error(), "context canceled") && c.Request.Context().Err() == nil {
 					// only ignores error if it's a context cancellation due to setting structured outputs
@@ -3153,121 +3155,4 @@ func filterThinkTags(msgs []api.Message, m *Model) []api.Message {
 		}
 	}
 	return msgs
-}
-
-// handleImageGenerate handles image generation requests within GenerateHandler.
-// This is called when the model has the Image capability.
-func (s *Server) handleImageGenerate(c *gin.Context, req api.GenerateRequest, modelName string, checkpointStart time.Time) {
-	// Validate image dimensions
-	const maxDimension int32 = 4096
-	if req.Width > maxDimension || req.Height > maxDimension {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("width and height must be <= %d", maxDimension)})
-		return
-	}
-
-	// Schedule the runner for image generation
-	runner, m, _, err := s.scheduleRunner(c.Request.Context(), modelName, []model.Capability{model.CapabilityImage}, nil, req.KeepAlive, nil)
-	if err != nil {
-		handleScheduleError(c, req.Model, err)
-		return
-	}
-
-	checkpointLoaded := time.Now()
-
-	// Handle load-only request (empty prompt)
-	if req.Prompt == "" {
-		c.JSON(http.StatusOK, api.GenerateResponse{
-			Model:      req.Model,
-			CreatedAt:  time.Now().UTC(),
-			Done:       true,
-			DoneReason: "load",
-		})
-		return
-	}
-
-	// Check streaming preference
-	isStreaming := req.Stream == nil || *req.Stream
-
-	contentType := "application/x-ndjson"
-	if !isStreaming {
-		contentType = "application/json; charset=utf-8"
-	}
-	c.Header("Content-Type", contentType)
-
-	// Get seed from options if provided
-	var seed int64
-	if s, ok := req.Options["seed"]; ok {
-		switch v := s.(type) {
-		case int:
-			seed = int64(v)
-		case int64:
-			seed = v
-		case float64:
-			seed = int64(v)
-		}
-	}
-
-	var media []llm.MediaData
-	for i, imgData := range req.Images {
-		media = append(media, llm.NewMediaData(i, imgData))
-	}
-
-	var streamStarted bool
-	var finalResponse api.GenerateResponse
-
-	if err := runner.Completion(c.Request.Context(), llm.CompletionRequest{
-		Prompt: req.Prompt,
-		Width:  req.Width,
-		Height: req.Height,
-		Steps:  req.Steps,
-		Seed:   seed,
-		Media:  media,
-	}, func(cr llm.CompletionResponse) {
-		streamStarted = true
-		res := api.GenerateResponse{
-			Model:     req.Model,
-			CreatedAt: time.Now().UTC(),
-			Done:      cr.Done,
-		}
-
-		if cr.TotalSteps > 0 {
-			res.Completed = int64(cr.Step)
-			res.Total = int64(cr.TotalSteps)
-		}
-
-		if cr.Image != "" {
-			res.Image = cr.Image
-		}
-
-		if cr.Done {
-			res.DoneReason = cr.DoneReason.String()
-			res.Metrics.TotalDuration = time.Since(checkpointStart)
-			res.Metrics.LoadDuration = checkpointLoaded.Sub(checkpointStart)
-		}
-
-		if !isStreaming {
-			finalResponse = res
-			return
-		}
-
-		data, _ := json.Marshal(res)
-		c.Writer.Write(append(data, '\n'))
-		c.Writer.Flush()
-	}); err != nil {
-		s.sched.expireRunnersForRuntimeOOM(m, err)
-		// Only send JSON error if streaming hasn't started yet
-		// (once streaming starts, headers are committed and we can't change status code)
-		if !isStreaming || !streamStarted {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		} else {
-			data, _ := json.Marshal(gin.H{"error": err.Error()})
-			c.Writer.Write(append(data, '\n'))
-			c.Writer.Flush()
-		}
-		return
-	}
-
-	if !isStreaming {
-		c.JSON(http.StatusOK, finalResponse)
-	}
 }

@@ -18,5 +18,5 @@
 ### Resources
 
 * [Troubleshooting Guide](https://docs.ollama.com/troubleshooting)
-* [FAQ](https://docs.ollama.com/faq#faq)
+* [FAQ](https://docs.ollama.com/faq)
 * [Development guide](./development.md)

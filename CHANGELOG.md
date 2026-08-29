@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.33.1-termux — 2026-08-28
+
+This EOL Termux release aligns the fork with upstream Ollama `v0.33.1` for
+Android ARM64. It preserves the fork-owned CI pipeline, Termux launcher and
+prebuilt archive verification while incorporating upstream runtime changes.
+
+### Termux changes
+
+- Keep the Android ARM64 release workflow with NDK checksum validation,
+  verify-only default, archive validation and CI-built `llama-server` assets.
+- Preserve Termux launcher/runtime compatibility and the npm installer safety
+  contract.
+- Remove the obsolete UI `LaunchCommands` component superseded upstream by the
+  shared `launchCommands` integration registry.
+- Harden the public-release safety gate: `git grep`-based scanning with
+  explicit exit-code handling (0 = violation, 1 = clean, >1 = fail-closed).
+  The previous `xargs rg` pipeline passed on scanner errors, and when the
+  tracked tree was split across multiple xargs batches it also passed on
+  violations (rg's per-batch "no match" exit aggregated to 123, hiding every
+  match from the old `if`); on a single-batch checkout violations were still
+  caught.
+- Align the README with the launcher reality: only the verified Termux
+  integrations (Codex VL, Codex, Qwen Code, Pi) are advertised, and the
+  version lineage documents both `v<upstream>-termux` and `-termux.N` tag
+  forms.
+- Resolve the four merge-conflict hotspots (release workflow tag regex,
+  `cmd/cmd.go` bootstrap, launch-commands UI removal, README).
+
+This is the final EOL alignment release; no further upstream synchronization is
+promised.
+
+### Upstream highlights
+
+- Claude recommendation mappings and updated agent/runtime behavior from
+  upstream Ollama `v0.33.1`.
+- Updated model, parser, server and llama.cpp support carried by the upstream
+  release.
+
 ## 0.32.2-termux.1 — 2026-07-22
 
 This stable Termux release merges upstream Ollama `v0.32.2` (24 commits since

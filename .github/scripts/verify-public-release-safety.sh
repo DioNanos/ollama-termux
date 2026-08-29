@@ -32,17 +32,40 @@ public_leak_pattern='(/home/'"dag"'/|Nexus'"Files"'|Docs'"Hub"'|ACTIVE_'"WORK"'\
 scan_output="$(mktemp)"
 trap 'rm -f "$scan_output"' EXIT
 
-if git ls-files -z | xargs -0 rg -nI --color=never -e "$secret_pattern" >"$scan_output" 2>/dev/null; then
-    echo "ERROR: potential secret-like content found in tracked files:"
-    cat "$scan_output"
-    fail=1
-fi
+# Run one scan over the tracked files and translate its exit code explicitly:
+#   0 = matches found (violation), 1 = no match (clean),
+#   anything else = scanner failure, which must FAIL the gate instead of
+#   being read as "no match" (a missing or broken scanner must never produce
+#   a passing public-release safety check).
+# git grep (not `xargs rg`): xargs aggregates per-batch exits, so rg's
+# "no match" (1) on any batch turned the whole pipeline into 123 and the old
+# `if` branch could never see a match at all — fail-open on errors AND on
+# violations. -E is required: the patterns are ERE (`|`, `{20,}`), which
+# git's default BRE would treat as literals — a silent no-match-on-anything.
+run_scan() {
+    local label="$1"
+    local pattern="$2"
+    local rc=0
+    git grep -nIE -e "$pattern" >"$scan_output" 2>/dev/null || rc=$?
+    case "$rc" in
+        1)
+            return 0
+            ;;
+        0)
+            echo "ERROR: ${label} found in tracked files:"
+            cat "$scan_output"
+            return 1
+            ;;
+        *)
+            echo "ERROR: safety scanner failed with exit ${rc} while checking ${label}; refusing to pass fail-open." >&2
+            return 1
+            ;;
+    esac
+}
 
-if git ls-files -z | xargs -0 rg -nI --color=never -e "$public_leak_pattern" >"$scan_output" 2>/dev/null; then
-    echo "ERROR: internal path or audit marker found in tracked files:"
-    cat "$scan_output"
-    fail=1
-fi
+run_scan "potential secret-like content" "$secret_pattern" || fail=1
+
+run_scan "internal path or audit marker" "$public_leak_pattern" || fail=1
 
 if [ "$fail" -ne 0 ]; then
     exit 1
