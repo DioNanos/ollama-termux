@@ -14,6 +14,16 @@ prebuilt archive verification while incorporating upstream runtime changes.
   contract.
 - Remove the obsolete UI `LaunchCommands` component superseded upstream by the
   shared `launchCommands` integration registry.
+- Harden the public-release safety gate: `git grep`-based scanning with
+  explicit exit-code handling (0 = violation, 1 = clean, >1 = fail-closed) —
+  the previous `xargs rg` aggregation could never report a violation and
+  passed even on scanner errors.
+- Align the README with the launcher reality: only the verified Termux
+  integrations (Codex VL, Codex, Qwen Code, Pi) are advertised, and the
+  version lineage documents both `v<upstream>-termux` and `-termux.N` tag
+  forms.
+- Resolve the four merge-conflict hotspots (release workflow tag regex,
+  `cmd/cmd.go` bootstrap, launch-commands UI removal, README).
 
 This is the final EOL alignment release; no further upstream synchronization is
 promised.
